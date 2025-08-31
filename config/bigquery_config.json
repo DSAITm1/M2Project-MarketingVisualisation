@@ -1,0 +1,45 @@
+{
+  "project_id": "project-olist-470307",
+  "dataset_id": "dbt_olist_stg",
+  "description": "Configuration for Power BI direct connection to BigQuery",
+  "recommended_tables": [
+    {
+      "table_name": "dim_customer",
+      "description": "Customer dimension data (99,441 rows)",
+      "use_case": "Customer demographics and location analysis"
+    },
+    {
+      "table_name": "dim_orders", 
+      "description": "Order dimension data (99,441 rows)",
+      "use_case": "Sales trends and order analysis"
+    },
+    {
+      "table_name": "dim_order_reviews",
+      "description": "Order reviews data (98,410 rows)",
+      "use_case": "Customer satisfaction analysis"
+    },
+    {
+      "table_name": "dim_geolocation",
+      "description": "Geographic location data (19,177 rows)",
+      "use_case": "Geographic market analysis"
+    },
+    {
+      "table_name": "fact_order_items",
+      "description": "Order items fact table (112,650 rows)",
+      "use_case": "Product performance and revenue analysis"
+    }
+  ],
+  "performance_settings": {
+    "cache_ttl": 3600,
+    "max_rows_display": 1000,
+    "query_timeout": 300,
+    "enable_query_cache": true,
+    "memory_optimization": true
+  },
+  "dashboard_settings": {
+    "default_date_range": 90,
+    "chart_height": 400,
+    "enable_debug_mode": false,
+    "auto_refresh_interval": null
+  }
+}
