@@ -246,8 +246,73 @@ def main():
             )
             display_chart(fig, key="cohort_heatmap")
     
-    # Detailed customer data
-    display_dataframe(customer_segments, "📋 Customer Segmentation Data", max_rows=50)
+    # Detailed customer data - Business-focused summary
+    if not customer_segments.empty:
+        st.header("📋 Customer Segmentation Summary")
+
+        # Create a business-focused view
+        business_view = customer_segments.copy()
+
+        # Format customer ID for privacy (show first 8 chars)
+        if 'customer_unique_id' in business_view.columns:
+            business_view['customer_id'] = business_view['customer_unique_id'].str[:8] + '...'
+            business_view = business_view.drop('customer_unique_id', axis=1)
+
+        # Select and reorder columns for business relevance
+        key_columns = ['customer_id', 'customer_segment', 'customer_state', 'total_orders', 'total_spent', 'avg_review_score', 'last_order_date']
+
+        # Only include columns that exist
+        available_columns = [col for col in key_columns if col in business_view.columns]
+        business_view = business_view[available_columns]
+
+        # Rename columns for better readability
+        column_names = {
+            'customer_id': 'Customer ID',
+            'customer_segment': 'Segment',
+            'customer_state': 'State',
+            'total_orders': 'Orders',
+            'total_spent': 'Total Spent ($)',
+            'avg_review_score': 'Avg Rating',
+            'last_order_date': 'Last Order'
+        }
+
+        business_view = business_view.rename(columns=column_names)
+
+        # Format currency and ratings
+        if 'Total Spent ($)' in business_view.columns:
+            business_view['Total Spent ($)'] = business_view['Total Spent ($)'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "N/A")
+
+        if 'Avg Rating' in business_view.columns:
+            business_view['Avg Rating'] = business_view['Avg Rating'].apply(lambda x: f"{x:.1f}/5" if pd.notnull(x) else "N/A")
+
+        if 'Last Order' in business_view.columns:
+            business_view['Last Order'] = pd.to_datetime(business_view['Last Order']).dt.strftime('%Y-%m-%d')
+
+        # Sort by total spent for business relevance
+        if 'Total Spent ($)' in business_view.columns:
+            # Convert back to numeric for sorting
+            business_view['sort_value'] = customer_segments['total_spent'] if 'total_spent' in customer_segments.columns else 0
+            business_view = business_view.sort_values('sort_value', ascending=False).drop('sort_value', axis=1)
+
+        # Display with better formatting
+        display_dataframe(business_view, "📊 Top Customers by Value", max_rows=20)
+
+        # Add summary insights
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            total_customers = len(business_view)
+            st.metric("👥 Total Customers", f"{total_customers:,}")
+
+        with col2:
+            if 'Segment' in business_view.columns:
+                top_segment = business_view['Segment'].value_counts().index[0]
+                st.metric("🏆 Top Segment", top_segment)
+
+        with col3:
+            if 'Total Spent ($)' in business_view.columns:
+                # Calculate average spend (need to convert back from formatted string)
+                avg_spend = customer_segments['total_spent'].mean() if 'total_spent' in customer_segments.columns else 0
+                st.metric("💰 Avg Customer Value", f"${avg_spend:,.0f}")
 
 if __name__ == "__main__":
     main()
