@@ -57,21 +57,20 @@ def load_review_analytics():
         GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
     )
     SELECT * FROM review_analytics
-    LIMIT 10000
     """
     
     return execute_query(query, "review_analytics")
 
 def main():
-    st.title("⭐ Review Analytics")
-    st.markdown("**Customer satisfaction and review sentiment analysis**")
+    st.title("⭐ Customer Voice Intelligence")
+    st.markdown("**Strategic Customer Satisfaction & Sentiment Analysis for Marketing Directors**")
     
     # Load data
-    with st.spinner("Loading review analytics data..."):
+    with st.spinner("Loading customer voice analytics..."):
         df = load_review_analytics()
     
     if df.empty:
-        st.error("No review data available.")
+        st.error("No customer voice data available.")
         return
     
     # Convert date columns and normalize timezones
@@ -87,8 +86,102 @@ def main():
                 df[col] = df[col].dt.tz_convert('UTC').dt.tz_localize(None)
             # If already timezone-naive, leave as is
     
-    # Key metrics
-    st.header("📊 Review Summary")
+    # Executive Summary for Marketing Director
+    st.header("📊 Customer Voice Executive Summary")
+
+    if not df.empty:
+        # Calculate key customer experience metrics
+        total_reviews = len(df)
+        avg_satisfaction = df['review_score'].mean()
+        satisfaction_rate = (df['review_score'] >= 4).mean() * 100
+        promoter_rate = (df['review_score'] >= 5).mean() * 100
+        detractor_rate = (df['review_score'] <= 2).mean() * 100
+        net_promoter_score = promoter_rate - detractor_rate
+        
+        # Customer experience insights
+        comment_rate = (df['review_comment_message'].notna() & (df['review_comment_message'] != '')).mean() * 100
+        avg_order_value = df['order_value'].mean()
+        
+        # Geographic coverage
+        states_covered = df['customer_state'].nunique()
+        
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("👥 Total Customer Reviews", f"{total_reviews:,}", help="Total customer feedback collected")
+            st.metric("⭐ Average Satisfaction", f"{avg_satisfaction:.2f}/5.0", help="Overall customer satisfaction score")
+
+        with col2:
+            st.metric("😊 Satisfaction Rate (4-5⭐)", f"{satisfaction_rate:.1f}%", help="Percentage of highly satisfied customers")
+            st.metric("🌟 Promoter Rate (5⭐)", f"{promoter_rate:.1f}%", help="Percentage of brand promoters")
+
+        with col3:
+            st.metric("📈 Net Promoter Score", f"{net_promoter_score:+.1f}", 
+                     help="NPS = % Promoters - % Detractors", 
+                     delta=f"{net_promoter_score:+.1f}")
+            st.metric("� Comment Rate", f"{comment_rate:.1f}%", help="Percentage of customers providing detailed feedback")
+
+        with col4:
+            st.metric("🗺️ Markets Covered", f"{states_covered} states", help="Geographic reach of customer feedback")
+            st.metric("💰 Avg Order Value", f"${avg_order_value:.2f}", help="Average order value from reviewed purchases")
+
+    # Strategic Customer Insights
+    st.header("🎯 Strategic Customer Insights")
+
+    insights_col1, insights_col2 = st.columns(2)
+
+    with insights_col1:
+        st.subheader("💎 Customer Satisfaction Drivers")
+        
+        # Analyze satisfaction by order value ranges
+        df['value_segment'] = pd.cut(df['order_value'], 
+                                   bins=[0, 50, 100, 200, 500, float('inf')],
+                                   labels=['Budget (<$50)', 'Value ($50-100)', 'Standard ($100-200)', 
+                                          'Premium ($200-500)', 'Luxury ($500+)'])
+        
+        satisfaction_by_value = df.groupby('value_segment')['review_score'].agg(['mean', 'count']).round(2)
+        satisfaction_by_value = satisfaction_by_value.reset_index()
+        
+        # Find the highest and lowest performing segments
+        best_segment = satisfaction_by_value.loc[satisfaction_by_value['mean'].idxmax()]
+        worst_segment = satisfaction_by_value.loc[satisfaction_by_value['mean'].idxmin()]
+        
+        st.success(f"🏆 **Best Performing Segment**: {best_segment['value_segment']} "
+                  f"({best_segment['mean']:.2f}⭐ from {best_segment['count']:,} reviews)")
+        st.error(f"⚠️ **Improvement Needed**: {worst_segment['value_segment']} "
+                f"({worst_segment['mean']:.2f}⭐ from {worst_segment['count']:,} reviews)")
+        
+        st.info("💡 **Strategic Insight**: Focus premium customer experience on budget segments to improve overall satisfaction")
+
+    with insights_col2:
+        st.subheader("🌍 Geographic Satisfaction Patterns")
+        
+        # Geographic satisfaction analysis
+        geo_satisfaction = df.groupby('customer_state').agg({
+            'review_score': ['mean', 'count'],
+            'order_value': 'mean'
+        }).round(2)
+        geo_satisfaction.columns = ['avg_score', 'review_count', 'avg_order_value']
+        geo_satisfaction = geo_satisfaction.reset_index()
+        
+        # Top and bottom performing states
+        top_states = geo_satisfaction.nlargest(3, 'avg_score')
+        bottom_states = geo_satisfaction.nsmallest(3, 'avg_score')
+        
+        st.success("**Top Performing Markets:**")
+        for idx, row in top_states.iterrows():
+            st.write(f"⭐ **{row['customer_state']}**: {row['avg_score']:.2f}⭐ "
+                   f"({row['review_count']:,} reviews)")
+        
+        st.warning("**Markets Needing Attention:**")
+        for idx, row in bottom_states.iterrows():
+            st.write(f"⚠️ **{row['customer_state']}**: {row['avg_score']:.2f}⭐ "
+                   f"({row['review_count']:,} reviews)")
+        
+        st.info("💡 **Strategic Insight**: Replicate best practices from top markets to improve bottom performers")
+
+    # Customer Experience Dashboard
+    st.header("📊 Customer Experience Dashboard")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -266,8 +359,148 @@ def main():
                     with st.expander(f"Comment {i+1}"):
                         st.write(comment)
     
-    # Detailed data table
-    st.header("📋 Review Analytics Data")
+    # Strategic Recommendations
+    st.header("🎯 Strategic Recommendations")
+    
+    if not df.empty:
+        rec_col1, rec_col2 = st.columns(2)
+        
+        with rec_col1:
+            st.subheader("🚀 Customer Experience Optimization")
+            
+            # Identify key improvement areas
+            low_satisfaction_reviews = df[df['review_score'] <= 3]
+            high_value_low_satisfaction = low_satisfaction_reviews[low_satisfaction_reviews['order_value'] > df['order_value'].quantile(0.8)]
+            
+            st.error("**Critical Focus Areas:**")
+            st.write(f"⚠️ **{len(low_satisfaction_reviews):,} reviews** with scores ≤ 3 need immediate attention")
+            if not high_value_low_satisfaction.empty:
+                st.write(f"💰 **{len(high_value_low_satisfaction)} high-value customers** with low satisfaction")
+            
+            st.success("**Action Items:**")
+            st.write("• Implement proactive customer service for high-value orders")
+            st.write("• Develop automated satisfaction surveys post-delivery")
+            st.write("• Create customer feedback integration in product development")
+            st.write("• Establish customer success teams for premium segments")
+            
+            # Promoter program opportunity
+            promoter_opportunity = df[df['review_score'] >= 4]
+            st.metric("🌟 Promoter Program Potential", f"{len(promoter_opportunity):,} customers", 
+                     help="Customers who could become brand advocates")
+        
+        with rec_col2:
+            st.subheader("📈 Voice of Customer Strategy")
+            
+            # Comment analysis insights
+            comments_with_feedback = df[df['review_comment_message'].notna() & (df['review_comment_message'] != '')]
+            high_score_comments = comments_with_feedback[comments_with_feedback['review_score'] >= 4]
+            low_score_comments = comments_with_feedback[comments_with_feedback['review_score'] <= 2]
+            
+            st.info("**Voice of Customer Insights:**")
+            st.write(f"💬 **{len(comments_with_feedback):,} customers** provided detailed feedback")
+            st.write(f"⭐ **{len(high_score_comments)} positive comments** contain success factors")
+            st.write(f"⚠️ **{len(low_score_comments)} negative comments** highlight pain points")
+            
+            st.success("**Strategic Initiatives:**")
+            st.write("• Launch referral program leveraging top promoters")
+            st.write("• Analyze comment themes for product improvement")
+            st.write("• Implement real-time feedback collection")
+            st.write("• Create customer advocacy and loyalty programs")
+            
+            # Geographic expansion opportunity
+            top_markets = geo_satisfaction.head(5)
+            st.metric("🎯 Top Markets for Expansion", f"{len(top_markets)} high-satisfaction states", 
+                     help="Markets with proven customer satisfaction")
+    
+    # Business Intelligence Summary
+    st.header("📊 Customer Voice Intelligence Summary")
+    
+    if not df.empty:
+        # Key business intelligence metrics
+        total_feedback_volume = len(df)
+        customer_satisfaction_index = avg_satisfaction * 20  # Convert to 100-point scale
+        feedback_engagement_rate = comment_rate
+        customer_loyalty_index = net_promoter_score + 100  # Convert to 0-200 scale
+        
+        # Customer experience health score
+        health_score = (satisfaction_rate + promoter_rate - detractor_rate) / 3
+        
+        # Revenue impact analysis
+        high_satisfaction_revenue = df[df['review_score'] >= 4]['order_value'].sum()
+        total_revenue_from_reviews = df['order_value'].sum()
+        satisfaction_revenue_percentage = (high_satisfaction_revenue / total_revenue_from_reviews) * 100
+        
+        summary_col1, summary_col2, summary_col3 = st.columns(3)
+        
+        with summary_col1:
+            st.subheader("🎯 Customer Experience Health")
+            st.metric("Customer Satisfaction Index", f"{customer_satisfaction_index:.1f}/100")
+            st.metric("Feedback Engagement Rate", f"{feedback_engagement_rate:.1f}%")
+            st.metric("Overall Health Score", f"{health_score:.1f}%")
+        
+        with summary_col2:
+            st.subheader("💰 Business Impact")
+            st.metric("Revenue from Satisfied Customers", f"${high_satisfaction_revenue:,.0f}")
+            st.metric("Satisfaction Revenue Share", f"{satisfaction_revenue_percentage:.1f}%")
+            st.metric("Customer Loyalty Index", f"{customer_loyalty_index:.1f}/200")
+        
+        with summary_col3:
+            st.subheader("📈 Strategic KPIs")
+            # Customer lifetime value correlation
+            clv_correlation = df['order_value'].corr(df['review_score'])
+            st.metric("CLV-Satisfaction Correlation", f"{clv_correlation:.3f}")
+            
+            # Feedback velocity (recent feedback rate)
+            if 'review_creation_date' in df.columns:
+                recent_reviews = df[df['review_creation_date'] >= df['review_creation_date'].max() - pd.Timedelta(days=30)]
+                feedback_velocity = len(recent_reviews) / 30
+                st.metric("Daily Feedback Velocity", f"{feedback_velocity:.1f}")
+            
+            # Market penetration through feedback
+            feedback_coverage = (states_covered / 27) * 100  # Brazil has 27 states
+            st.metric("Market Feedback Coverage", f"{feedback_coverage:.1f}%")
+        
+        # Executive insights
+        st.subheader("🏆 Executive Insights")
+        
+        insights = []
+        
+        if net_promoter_score > 30:
+            insights.append("🌟 **Excellent NPS** - Strong foundation for growth marketing")
+        elif net_promoter_score > 0:
+            insights.append("📈 **Good NPS** - Opportunity to convert more promoters")
+        else:
+            insights.append("⚠️ **NPS needs improvement** - Focus on customer experience recovery")
+        
+        if feedback_engagement_rate > 20:
+            insights.append("💬 **High engagement** - Customers are willing to provide feedback")
+        else:
+            insights.append("📝 **Low engagement** - Need to encourage more detailed feedback")
+        
+        if satisfaction_revenue_percentage > 70:
+            insights.append("💰 **Strong revenue correlation** - Satisfaction drives business results")
+        else:
+            insights.append("📊 **Revenue opportunity** - Improve satisfaction to boost revenue")
+        
+        for insight in insights:
+            st.info(insight)
+        
+        # Strategic priorities
+        st.subheader("🎯 Strategic Priorities")
+        
+        priorities = [
+            "1. **Customer Experience Excellence**: Achieve 90%+ satisfaction rate across all segments",
+            "2. **Voice of Customer Integration**: Implement feedback in product development and service design",
+            "3. **Promoter Program Development**: Convert satisfied customers into brand advocates",
+            "4. **Geographic Expansion Strategy**: Replicate success from top-performing markets",
+            "5. **Real-time Feedback Systems**: Enable immediate response to customer concerns"
+        ]
+        
+        for priority in priorities:
+            st.write(priority)
+    
+    # Detailed Customer Feedback Analysis
+    st.header("📋 Customer Feedback Data Explorer")
     
     # Filters
     col1, col2, col3 = st.columns(3)
