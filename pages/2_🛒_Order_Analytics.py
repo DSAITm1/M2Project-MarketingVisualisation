@@ -8,33 +8,26 @@ import pandas as pd
 from pandas import DatetimeTZDtype
 import plotly.express as px
 import plotly.graph_objects as go
-from google.cloud import bigquery
-from google.auth import default
-import json
+import sys
+import os
 from datetime import datetime, timedelta
 
+# Add parent directory to path for utils import
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from utils.database import load_config, get_bigquery_client, execute_query
+from utils.visualizations import (create_metric_cards, create_bar_chart, create_pie_chart, 
+                                create_line_chart, display_chart, display_dataframe)
+from utils.data_processing import get_order_performance, format_currency
+
 st.set_page_config(page_title="Order Analytics", page_icon="🛒", layout="wide")
-
-@st.cache_data
-def load_config():
-    """Load BigQuery configuration"""
-    import os
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'bigquery_config.json')
-    with open(config_path, 'r') as f:
-        return json.load(f)
-
-@st.cache_resource
-def get_bigquery_client():
-    """Initialize BigQuery client with caching"""
-    config = load_config()
-    credentials, _ = default()
-    return bigquery.Client(credentials=credentials, project=config['project_id'])
 
 @st.cache_data(ttl=3600)
 def load_order_analytics():
     """Load comprehensive order analytics from BigQuery"""
     config = load_config()
-    client = get_bigquery_client()
+    if not config:
+        return pd.DataFrame()
     
     query = f"""
     WITH order_analytics AS (
@@ -62,11 +55,7 @@ def load_order_analytics():
     LIMIT 10000
     """
     
-    try:
-        return client.query(query).to_dataframe()
-    except Exception as e:
-        st.error(f"Error loading order analytics: {str(e)}")
-        return pd.DataFrame()
+    return execute_query(query, "order_analytics")
 
 def main():
     st.title("🛒 Order Analytics")

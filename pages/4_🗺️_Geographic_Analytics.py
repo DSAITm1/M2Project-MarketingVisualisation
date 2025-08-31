@@ -8,32 +8,25 @@ import pandas as pd
 from pandas import DatetimeTZDtype
 import plotly.express as px
 import plotly.graph_objects as go
-from google.cloud import bigquery
-from google.auth import default
-import json
+import sys
+import os
+
+# Add parent directory to path for utils import
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from utils.database import load_config, get_bigquery_client, execute_query
+from utils.visualizations import (create_metric_cards, create_bar_chart, create_pie_chart, 
+                                create_line_chart, display_chart, display_dataframe)
+from utils.data_processing import get_geographic_summary, format_currency
 
 st.set_page_config(page_title="Geographic Analytics", page_icon="🗺️", layout="wide")
-
-@st.cache_data
-def load_config():
-    """Load BigQuery configuration"""
-    import os
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'bigquery_config.json')
-    with open(config_path, 'r') as f:
-        return json.load(f)
-
-@st.cache_resource
-def get_bigquery_client():
-    """Initialize BigQuery client with caching"""
-    config = load_config()
-    credentials, _ = default()
-    return bigquery.Client(credentials=credentials, project=config['project_id'])
 
 @st.cache_data(ttl=3600)
 def load_geographic_analytics():
     """Load geographic analytics from BigQuery"""
     config = load_config()
-    client = get_bigquery_client()
+    if not config:
+        return pd.DataFrame()
     
     query = f"""
     WITH geo_analytics AS (
@@ -66,17 +59,14 @@ def load_geographic_analytics():
     LIMIT 5000
     """
     
-    try:
-        return client.query(query).to_dataframe()
-    except Exception as e:
-        st.error(f"Error loading geographic analytics: {str(e)}")
-        return pd.DataFrame()
+    return execute_query(query, "geographic_analytics")
 
 @st.cache_data(ttl=3600)
 def load_state_summary():
     """Load state-level summary data"""
     config = load_config()
-    client = get_bigquery_client()
+    if not config:
+        return pd.DataFrame()
     
     query = f"""
     SELECT 
@@ -97,11 +87,7 @@ def load_state_summary():
     ORDER BY total_revenue DESC
     """
     
-    try:
-        return client.query(query).to_dataframe()
-    except Exception as e:
-        st.error(f"Error loading state summary: {str(e)}")
-        return pd.DataFrame()
+    return execute_query(query, "state_summary")
 
 def main():
     st.title("🗺️ Geographic Analytics")
