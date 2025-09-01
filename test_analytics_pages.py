@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Test script to validate all analytics pages functionality
+Health Check Script for Analytics Dashboard
+Quick validation of BigQuery connections and data availability
+Usage: python test_analytics_pages.py
 """
 
 import sys
@@ -112,8 +114,8 @@ def test_geographic_analytics():
         return False
 
 def main():
-    """Run all tests"""
-    print("🧪 Analytics Pages Functionality Test")
+    """Run all health checks"""
+    print("🏥 Analytics Dashboard Health Check")
     print("=" * 50)
     
     results = []
@@ -122,19 +124,20 @@ def main():
     results.append(test_geographic_analytics())
     
     print("\n" + "=" * 50)
-    print("📊 Test Results Summary:")
+    print("📊 Health Check Results:")
     
     if all(results):
-        print("🎉 All analytics pages are working correctly!")
-        print("✅ Order Analytics: PASSED")
-        print("✅ Review Analytics: PASSED") 
-        print("✅ Geographic Analytics: PASSED")
-        print("\n🚀 You can now navigate to all analytics pages without errors.")
+        print("🎉 All systems operational!")
+        print("✅ Order Analytics: HEALTHY")
+        print("✅ Review Analytics: HEALTHY") 
+        print("✅ Geographic Analytics: HEALTHY")
+        print("\n🚀 Dashboard ready for use.")
     else:
-        print("❌ Some analytics pages have issues:")
-        print(f"   Order Analytics: {'PASSED' if results[0] else 'FAILED'}")
-        print(f"   Review Analytics: {'PASSED' if results[1] else 'FAILED'}")
-        print(f"   Geographic Analytics: {'PASSED' if results[2] else 'FAILED'}")
+        print("⚠️ Some issues detected:")
+        print(f"   Order Analytics: {'HEALTHY' if results[0] else 'UNHEALTHY'}")
+        print(f"   Review Analytics: {'HEALTHY' if results[1] else 'UNHEALTHY'}")
+        print(f"   Geographic Analytics: {'HEALTHY' if results[2] else 'UNHEALTHY'}")
+        print("\n🔧 Check debug_log.md for troubleshooting steps.")
 
 if __name__ == "__main__":
     main()
