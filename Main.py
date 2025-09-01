@@ -1,11 +1,12 @@
 """
-Optimized Marketing Analytics Dashboard
-High-performance Streamlit app with modular architecture
+Marketing Analytics Dashboard
+Hybrid BigQuery-Polars architecture for optimal performance
 """
 
 import streamlit as st
 import polars as pl
 import plotly.express as px
+import plotly.graph_objects as go
 import sys
 import os
 from datetime import datetime
@@ -13,18 +14,8 @@ from datetime import datetime
 # Add utils to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 
-try:
-    from utils.database import load_config, get_bigquery_client, get_available_tables
-    from utils.visualizations import (create_metric_cards, create_bar_chart, create_pie_chart, 
-                                    create_line_chart, display_chart, display_dataframe, COLORS)
-    from utils.data_processing import (get_customer_segments, get_order_performance, 
-                                     get_review_insights, get_geographic_summary, 
-                                     calculate_business_metrics, format_currency)
-    from utils.performance import enable_debug_mode, perf_tracker, optimize_dataframe_memory
-except ImportError as e:
-    st.error(f"❌ Import error: {e}")
-    st.error("Please ensure all utility modules are properly installed")
-    st.stop()
+from utils.database import get_bigquery_client
+from utils.visualizations import create_metric_cards, create_bar_chart, create_pie_chart, create_line_chart
 
 # Page configuration
 st.set_page_config(
@@ -34,568 +25,201 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-def get_segment_count(value_counts_df: pl.DataFrame, segment_name: str) -> int:
-    """Helper function to get count for a specific segment from value_counts result"""
-    filtered = value_counts_df.filter(pl.col('customer_segment') == segment_name)
-    return filtered['count'][0] if not filtered.is_empty() else 0
+@st.cache_data(ttl=1800)
+def get_dashboard_overview_data():
+    """Get dashboard overview data using BigQuery SQL"""
+    client = get_bigquery_client()
+    
+    query = """
+    WITH overview_metrics AS (
+        SELECT 
+            COUNT(DISTINCT c.customer_unique_id) as total_customers,
+            COUNT(DISTINCT o.order_id) as total_orders,
+            ROUND(SUM(oi.price), 2) as total_revenue,
+            ROUND(AVG(oi.price), 2) as avg_order_value,
+            COUNT(DISTINCT c.customer_state) as total_states,
+            COUNT(DISTINCT c.customer_city) as total_cities,
+            ROUND(AVG(r.review_score), 2) as avg_review_score,
+            COUNT(DISTINCT p.product_category_name) as total_categories
+        FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+        JOIN `project-olist-470307.dbt_olist_dwh.fact_orders` o
+            ON oi.order_sk = o.order_sk
+        JOIN `project-olist-470307.dbt_olist_dwh.dim_customers` c
+            ON o.customer_sk = c.customer_sk
+        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_order_reviews` r
+            ON o.order_sk = r.order_sk
+        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_products` p
+            ON oi.product_sk = p.product_sk
+    ),
+    
+    recent_activity AS (
+        SELECT 
+            EXTRACT(YEAR FROM o.order_purchase_timestamp) as year,
+            EXTRACT(MONTH FROM o.order_purchase_timestamp) as month,
+            COUNT(DISTINCT o.order_id) as monthly_orders,
+            ROUND(SUM(oi.price), 2) as monthly_revenue
+        FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+        JOIN `project-olist-470307.dbt_olist_dwh.fact_orders` o
+            ON oi.order_sk = o.order_sk
+        WHERE CASE 
+                WHEN o.order_purchase_timestamp IS NULL 
+                     OR TRIM(CAST(o.order_purchase_timestamp AS STRING)) = ''
+                THEN FALSE
+                ELSE TIMESTAMP(o.order_purchase_timestamp) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 MONTH)
+            END
+        GROUP BY year, month
+        ORDER BY year DESC, month DESC
+        LIMIT 12
+    )
+    
+    SELECT 
+        'overview' as data_type,
+        NULL as year, NULL as month,
+        total_customers, total_orders, total_revenue, avg_order_value,
+        total_states, total_cities, avg_review_score, total_categories,
+        NULL as monthly_orders, NULL as monthly_revenue
+    FROM overview_metrics
+    
+    UNION ALL
+    
+    SELECT 
+        'monthly' as data_type,
+        year, month,
+        NULL as total_customers, NULL as total_orders, NULL as total_revenue, NULL as avg_order_value,
+        NULL as total_states, NULL as total_cities, NULL as avg_review_score, NULL as total_categories,
+        monthly_orders, monthly_revenue
+    FROM recent_activity
+    
+    ORDER BY data_type, year DESC, month DESC
+    """
+    
+    try:
+        job = client.query(query)
+        results = job.result()
+        df = pl.from_pandas(results.to_dataframe())
+        return df
+    except Exception as e:
+        st.error(f"Error loading dashboard data: {str(e)}")
+        return pl.DataFrame()
 
-def initialize_session_state():
-    """Initialize session state variables"""
-    if 'data_loaded' not in st.session_state:
-        st.session_state.data_loaded = False
-    if 'last_refresh' not in st.session_state:
-        st.session_state.last_refresh = None
+def format_currency_polars(value):
+    """Format currency using Polars (10% processing)"""
+    if value is None:
+        return "$0.00"
+    return f"${value:,.2f}"
+
+def display_overview_metrics(df):
+    """Display main dashboard overview metrics"""
+    overview_data = df.filter(pl.col("data_type") == "overview")
+    
+    if overview_data.height > 0:
+        row = overview_data.row(0, named=True)
+        
+        # Create metric cards
+        metrics = [
+            ("Total Customers", f"{row['total_customers']:,}", "👥"),
+            ("Total Orders", f"{row['total_orders']:,}", "🛒"),
+            ("Total Revenue", format_currency_polars(row['total_revenue']), "💰"),
+            ("Avg Order Value", format_currency_polars(row['avg_order_value']), "💳"),
+            ("States Covered", f"{row['total_states']:,}", "🗺️"),
+            ("Cities Covered", f"{row['total_cities']:,}", "🏙️"),
+            ("Avg Rating", f"{row['avg_review_score']:.2f}/5", "⭐"),
+            ("Product Categories", f"{row['total_categories']:,}", "📦")
+        ]
+        
+        create_metric_cards(metrics)
+
+def display_recent_trends(df):
+    """Display recent business activity trends"""
+    monthly_data = df.filter(pl.col("data_type") == "monthly")
+    
+    if monthly_data.height > 0:
+        # Sort data by date
+        monthly_sorted = monthly_data.sort(["year", "month"])
+        
+        # Convert to pandas for visualization
+        monthly_pd = monthly_sorted.to_pandas()
+        monthly_pd['month_year'] = monthly_pd['year'].astype(str) + '-' + monthly_pd['month'].astype(str).str.zfill(2)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.line(
+                monthly_pd,
+                x='month_year',
+                y='monthly_orders',
+                title='Monthly Order Trends (Last 12 Months)',
+                labels={'monthly_orders': 'Orders', 'month_year': 'Month'}
+            )
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig2 = px.line(
+                monthly_pd,
+                x='month_year', 
+                y='monthly_revenue',
+                title='Monthly Revenue Trends (Last 12 Months)',
+                labels={'monthly_revenue': 'Revenue ($)', 'month_year': 'Month'}
+            )
+            fig2.update_layout(height=300)
+            st.plotly_chart(fig2, use_container_width=True)
 
 def main():
-    """Main application with optimized performance"""
-    
-    # Initialize session state
-    initialize_session_state()
-    
+    """Main dashboard function"""
     # Header
     st.title("📊 Marketing Analytics Dashboard")
-    st.markdown("**Optimized BigQuery Data Visualization**")
+    st.markdown("**Hybrid BigQuery-Polars Architecture** | 90% BigQuery Processing + 10% Polars Formatting")
     
-    # Debug and performance options
-    enable_debug_mode()
+    # Sidebar navigation
+    st.sidebar.markdown("## 📋 Analytics Sections")
+    st.sidebar.markdown("Navigate to specific analytics pages:")
+    st.sidebar.markdown("- 👥 **Customer Analytics**: Segmentation & Lifetime Value")
+    st.sidebar.markdown("- 🛒 **Order Analytics**: Trends & Delivery Performance") 
+    st.sidebar.markdown("- ⭐ **Review Analytics**: Sentiment & Satisfaction")
+    st.sidebar.markdown("- 🗺️ **Geographic Analytics**: Location Intelligence")
     
-    # Connection check
-    client = get_bigquery_client()
-    if client is None:
-        st.error("❌ Unable to connect to BigQuery. Please check your configuration.")
-        with st.expander("🔧 Troubleshooting"):
-            st.markdown("""
-            **Common Issues:**
-            1. Check if `config/bigquery_config.json` exists and is valid
-            2. Ensure Google Cloud credentials are properly configured
-            3. Verify BigQuery API is enabled for your project
-            4. Check if the dataset exists and you have access permissions
-            """)
+    # Load overview data
+    with st.spinner("Loading dashboard overview..."):
+        df = get_dashboard_overview_data()
+    
+    if df.height == 0:
+        st.warning("No data available for dashboard overview")
         return
     
-    # Sidebar configuration
-    create_sidebar()
+    # Overview metrics
+    st.header("📊 Business Overview")
+    display_overview_metrics(df)
     
-    # Main dashboard
-    create_dashboard()
-
-def create_sidebar():
-    """Create optimized sidebar with configuration options"""
-    st.sidebar.title("⚙️ Configuration")
+    # Recent trends
+    st.header("📈 Recent Activity Trends")
+    display_recent_trends(df)
     
-    config = load_config()
-    if config:
-        st.sidebar.success(f"✅ Project: {config['project_id']}")
-        st.sidebar.info(f"📊 Dataset: {config['dataset_id']}")
+    # Architecture info
+    st.header("🏗️ Architecture Information")
     
-    # Data refresh options
-    st.sidebar.subheader("🔄 Data Management")
-    
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("🔄 Refresh Data", help="Clear cache and reload data"):
-            st.cache_data.clear()
-            st.session_state.data_loaded = False
-            st.session_state.last_refresh = datetime.now()
-            st.rerun()
-    
-    with col2:
-        if st.button("🧹 Clear Cache", help="Clear all cached data"):
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.success("Cache cleared!")
-    
-    # Show last refresh time
-    if st.session_state.last_refresh:
-        st.sidebar.caption(f"Last refresh: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
-
-def create_dashboard():
-    """Create the main optimized dashboard"""
-    
-    # Load all data with progress indicator
-    progress_container = st.container()
-    
-    with progress_container:
-        data_loading_progress = st.progress(0)
-        status_text = st.empty()
-        
-        # Load data progressively
-        status_text.text("🔄 Loading customer data...")
-        customer_data = get_customer_segments()
-        data_loading_progress.progress(25)
-        
-        status_text.text("🔄 Loading order data...")
-        order_data = get_order_performance()
-        data_loading_progress.progress(50)
-        
-        status_text.text("🔄 Loading review data...")
-        review_data = get_review_insights()
-        data_loading_progress.progress(75)
-        
-        status_text.text("🔄 Loading geographic data...")
-        geo_data = get_geographic_summary()
-        data_loading_progress.progress(100)
-        
-        # Clear progress indicators
-        data_loading_progress.empty()
-        status_text.empty()
-    
-    # Check data availability
-    data_status = {
-        'Customers': not customer_data.is_empty(),
-        'Orders': not order_data.is_empty(), 
-        'Reviews': not review_data.is_empty(),
-        'Geography': not geo_data.is_empty()
-    }
-    
-    # Show data status
-    st.subheader("📊 Data Status")
-    status_cols = st.columns(len(data_status))
-    for i, (name, available) in enumerate(data_status.items()):
-        with status_cols[i]:
-            if available:
-                st.success(f"✅ {name}")
-            else:
-                st.error(f"❌ {name}")
-    
-    # Create tabs for different analyses
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Executive Summary", 
-        "👥 Customer Deep Dive", 
-        "🛒 Order Intelligence", 
-        "⭐ Review Insights"
-    ])
-    
-    with tab1:
-        create_executive_summary(customer_data, order_data, review_data, geo_data)
-    
-    with tab2:
-        create_customer_intelligence(customer_data)
-    
-    with tab3:
-        create_order_intelligence(order_data)
-    
-    with tab4:
-        create_review_intelligence(review_data)
-
-def create_executive_summary(customer_data, order_data, review_data, geo_data):
-    """Create comprehensive executive summary"""
-    st.header("📊 Executive Summary")
-    
-    # High-level KPIs
-    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-    
-    with kpi_col1:
-        if not customer_data.is_empty():
-            total_customers = customer_data.height
-            st.metric("👥 Total Customers", f"{total_customers:,}")
-    
-    with kpi_col2:
-        if not order_data.is_empty():
-            total_orders = order_data.height
-            st.metric("🛒 Total Orders", f"{total_orders:,}")
-    
-    with kpi_col3:
-        if not customer_data.is_empty() and 'total_spent' in customer_data.columns:
-            total_revenue = customer_data['total_spent'].sum()
-            st.metric("💰 Total Revenue", format_currency(total_revenue))
-    
-    with kpi_col4:
-        if not review_data.is_empty() and 'review_score' in review_data.columns:
-            avg_rating = review_data['review_score'].mean()
-            st.metric("⭐ Avg Rating", f"{avg_rating:.2f}/5")
-    
-    # Business insights
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🎯 Top Performing States")
-        if not geo_data.is_empty() and 'total_revenue' in geo_data.columns:
-            top_states = geo_data.group_by('customer_state').agg(
-                pl.col('total_revenue').sum()
-            ).sort('total_revenue', descending=True).limit(5)
-            
-            for i, row in enumerate(top_states.iter_rows(named=True)):
-                state = row['customer_state']
-                revenue = row['total_revenue']
-                st.write(f"**{i+1}. {state}**: {format_currency(revenue)}")
+        st.info("""
+        **Hybrid Processing Architecture:**
+        - 🔵 **BigQuery (90%)**: Aggregations, joins, filtering, time-series analysis
+        - 🟡 **Polars (10%)**: Currency formatting, percentage calculations, display preparation
+        - ⚡ **Performance**: 30-minute caching with @st.cache_data(ttl=1800)
+        """)
     
     with col2:
-        st.subheader("📈 Growth Opportunities")
-        if not customer_data.is_empty() and 'customer_segment' in customer_data.columns:
-            segment_counts = customer_data['customer_segment'].value_counts()
-            
-            # Identify growth opportunities
-            at_risk_rows = segment_counts.filter(pl.col('customer_segment') == 'At Risk')
-            if not at_risk_rows.is_empty():
-                at_risk = at_risk_rows['count'][0]
-                st.warning(f"⚠️ {at_risk:,} customers at risk of churning")
-            
-            new_customer_rows = segment_counts.filter(pl.col('customer_segment') == 'New Customers')
-            if not new_customer_rows.is_empty():
-                new_customers = new_customer_rows['count'][0]
-                st.info(f"🆕 {new_customers:,} new customers to nurture")
-
-def create_customer_intelligence(customer_data):
-    """Advanced customer analytics with RFM analysis"""
-    st.header("👥 Customer Intelligence")
+        st.success("""
+        **Data Sources:**
+        - 📊 Dataset: `dbt_olist_dwh`
+        - 🏢 Project: `project-olist-470307`
+        - 📅 Data freshness cached for optimal performance
+        - 🔄 Auto-refresh every 30 minutes
+        """)
     
-    if customer_data.is_empty():
-        st.warning("⚠️ No customer data available")
-        return
-    
-    # Display key customer metrics first
-    if 'total_spent' in customer_data.columns and 'total_orders' in customer_data.columns:
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            avg_order_value = customer_data['total_spent'].sum() / customer_data['total_orders'].sum()
-            st.metric("💰 Avg Order Value", format_currency(avg_order_value))
-        
-        with col2:
-            repeat_customers = (customer_data['total_orders'] > 1).sum()
-            repeat_rate = (repeat_customers / customer_data.height) * 100
-            st.metric("🔄 Repeat Customer Rate", f"{repeat_rate:.1f}%")
-        
-        with col3:
-            top_customer_spend = customer_data['total_spent'].max()
-            st.metric("👑 Top Customer Value", format_currency(top_customer_spend))
-        
-        with col4:
-            if 'avg_review_score' in customer_data.columns:
-                avg_customer_rating = customer_data['avg_review_score'].mean()
-                st.metric("⭐ Avg Customer Rating", f"{avg_customer_rating:.2f}/5")
-
-    # Customer segmentation overview with better insights
-    if 'customer_segment' in customer_data.columns:
-        # Header with explanation link
-        col_header, col_link = st.columns([4, 1])
-        with col_header:
-            st.subheader("🎯 RFM Customer Segmentation Analysis")
-        with col_link:
-            with st.popover("ℹ️ What do these segments mean?"):
-                st.markdown("""
-                **🏆 Champions** - Best customers! High spending, frequent orders, recent activity
-                > *Strategy: Reward and retain these customers*
-                
-                **🤝 Loyal Customers** - Consistent customers with recent activity and good spending
-                > *Strategy: Upsell and cross-sell opportunities*
-                
-                **💎 Big Spenders** - High-value customers but order less frequently  
-                > *Strategy: Encourage more frequent purchases*
-                
-                **🆕 New Customers** - Recent customers with lower initial spending
-                > *Strategy: Nurture relationships and increase engagement*
-                
-                **⭐ Potential Loyalists** - Multiple orders with decent spending patterns
-                > *Strategy: Develop into loyal customers with targeted campaigns*
-                
-                **⚠️ At Risk** - Previously active customers with declining engagement
-                > *Strategy: Win-back campaigns and re-engagement efforts*
-                
-                **🛒 One-Time Buyers** - Made only one purchase
-                > *Strategy: Convert to repeat customers through follow-up*
-                
-                **👤 Regular Customers** - Standard customers with average patterns
-                > *Strategy: Identify opportunities to move them up segments*
-                
-                ---
-                *RFM Analysis ranks customers on:*
-                - **Recency**: How recently they purchased
-                - **Frequency**: How often they purchase  
-                - **Monetary**: How much they spend
-                """)
-        
-        # Segment insights with actionable recommendations
-        segment_stats = customer_data.group_by('customer_segment').agg([
-            pl.col('customer_unique_id').count().alias('Count'),
-            pl.col('total_spent').sum().alias('Total Revenue'),
-            pl.col('total_spent').mean().alias('Avg Revenue'),
-            pl.col('total_orders').mean().alias('Avg Orders'),
-            pl.col('avg_review_score').mean().alias('Avg Rating')
-        ]).sort('Total Revenue', descending=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            segment_counts = customer_data['customer_segment'].value_counts()
-            fig = create_pie_chart(
-                data=segment_counts,
-                values='count',
-                names='customer_segment',
-                title="Customer Segment Distribution"
-            )
-            display_chart(fig)
-        
-        with col2:
-            segment_value = customer_data.group_by('customer_segment').agg(
-                pl.col('total_spent').sum()
-            ).sort('total_spent', descending=True)
-            fig = create_bar_chart(
-                data=segment_value,
-                x='customer_segment',
-                y='total_spent',
-                title="Revenue by Customer Segment",
-                labels={'customer_segment': 'Segment', 'total_spent': 'Revenue ($)'}
-            )
-            display_chart(fig)
-        
-        # Detailed segment analysis table
-        st.subheader("📊 Detailed Segment Analysis")
-        display_dataframe(segment_stats, "Customer Segment Performance", max_rows=10)
-        
-        # Business insights and recommendations
-        st.subheader("💡 Strategic Insights")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**🎯 Key Opportunities:**")
-            
-            # Identify opportunities
-            champions = get_segment_count(segment_counts, 'Champions')
-            if champions > 0:
-                st.success(f"✨ **{champions:,} Champions** - Your best customers! Focus on retention programs.")
-            
-            big_spenders = get_segment_count(segment_counts, 'Big Spenders')
-            if big_spenders > 0:
-                st.info(f"💎 **{big_spenders:,} Big Spenders** - High value, low frequency. Encourage repeat purchases.")
-            
-            potential = get_segment_count(segment_counts, 'Potential Loyalists')
-            if potential > 0:
-                st.info(f"🌟 **{potential:,} Potential Loyalists** - Great candidates for loyalty programs.")
-        
-        with col2:
-            st.write("**⚠️ Areas of Concern:**")
-            
-            at_risk = get_segment_count(segment_counts, 'At Risk')
-            if at_risk > 0:
-                risk_pct = (at_risk / customer_data.height) * 100
-                st.warning(f"🚨 **{at_risk:,} At Risk** ({risk_pct:.1f}%) - Immediate re-engagement needed.")
-            
-            one_time = get_segment_count(segment_counts, 'One-Time Buyers')
-            if one_time > 0:
-                one_time_pct = (one_time / customer_data.height) * 100
-                st.warning(f"📉 **{one_time:,} One-Time Buyers** ({one_time_pct:.1f}%) - Focus on conversion to repeat customers.")
-            
-            new_customers = get_segment_count(segment_counts, 'New Customers')
-            if new_customers > 0:
-                st.success(f"🆕 **{new_customers:,} New Customers** - Nurture these relationships!")
-
-    # RFM Scores Distribution (if available)
-    if all(col in customer_data.columns for col in ['recency_score', 'frequency_score', 'monetary_score']):
-        st.subheader("📈 RFM Score Distribution")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            recency_dist = customer_data['recency_score'].value_counts().sort('recency_score')
-            fig = create_bar_chart(
-                data=recency_dist,
-                x='recency_score',
-                y='count',
-                title="Recency Scores",
-                labels={'recency_score': 'Recency Score (1=Old, 5=Recent)', 'count': 'Customers'}
-            )
-            display_chart(fig)
-        
-        with col2:
-            frequency_dist = customer_data['frequency_score'].value_counts().sort('frequency_score')
-            fig = create_bar_chart(
-                data=frequency_dist,
-                x='frequency_score',
-                y='count',
-                title="Frequency Scores",
-                labels={'frequency_score': 'Frequency Score (1=Low, 5=High)', 'count': 'Customers'}
-            )
-            display_chart(fig)
-        
-        with col3:
-            monetary_dist = customer_data['monetary_score'].value_counts().sort('monetary_score')
-            fig = create_bar_chart(
-                data=monetary_dist,
-                x='monetary_score',
-                y='count',
-                title="Monetary Scores",
-                labels={'monetary_score': 'Monetary Score (1=Low, 5=High)', 'count': 'Customers'}
-            )
-            display_chart(fig)
-
-    # Geographic insights
-    st.subheader("🗺️ Geographic Distribution")
-    if 'customer_state' in customer_data.columns:
-        state_summary = customer_data.group_by('customer_state').agg([
-            pl.col('customer_unique_id').count().alias('Customers'),
-            pl.col('total_spent').sum().alias('Revenue'),
-            pl.col('avg_review_score').mean().alias('Avg Rating')
-        ]).sort('Revenue', descending=True)
-        
-        display_dataframe(state_summary, "📊 State Performance Summary", max_rows=20)
-
-def create_order_intelligence(order_data):
-    """Advanced order analytics"""
-    st.header("🛒 Order Intelligence")
-    
-    if order_data.is_empty():
-        st.warning("⚠️ No order data available")
-        return
-    
-    # Order performance metrics
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📊 Order Status Analysis")
-        if 'order_status' in order_data.columns:
-            status_counts = order_data['order_status'].value_counts()
-            fig = create_pie_chart(
-                data=status_counts,
-                values='count',
-                names='order_status',
-                title="Order Status Distribution"
-            )
-            display_chart(fig)
-    
-    with col2:
-        st.subheader("💰 Order Value Analysis")
-        if 'order_value' in order_data.columns:
-            # Create value bins using Polars
-            order_data = order_data.with_columns(
-                pl.when(pl.col("order_value") < 50).then(pl.lit("Low ($0-50)"))
-                .when(pl.col("order_value") < 150).then(pl.lit("Medium ($50-150)"))
-                .when(pl.col("order_value") < 300).then(pl.lit("High ($150-300)"))
-                .otherwise(pl.lit("Premium ($300+)"))
-                .alias("value_segment")
-            )
-            
-            value_counts = order_data.group_by("value_segment").agg(
-                pl.col("value_segment").count().alias("count")
-            )
-            fig = create_bar_chart(
-                data=value_counts,
-                x='value_segment',
-                y='count',
-                title="Order Value Distribution",
-                labels={'value_segment': 'Value Segment', 'count': 'Number of Orders'}
-            )
-            display_chart(fig)
-    
-    # Delivery performance
-    if 'delivery_difference' in order_data.columns:
-        st.subheader("⏱️ Delivery Performance Analysis")
-        
-        delivered_orders = order_data.filter(pl.col('order_status') == 'delivered')
-        if not delivered_orders.is_empty():
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                avg_diff = delivered_orders['delivery_difference'].mean()
-                on_time_pct = (delivered_orders['delivery_difference'] <= 0).mean() * 100
-                early_pct = (delivered_orders['delivery_difference'] < 0).mean() * 100
-                
-                metrics = {
-                    "⏰ Avg Delivery Variance": f"{avg_diff:.1f} days",
-                    "✅ On-Time Delivery": f"{on_time_pct:.1f}%",
-                    "🚀 Early Delivery": f"{early_pct:.1f}%"
-                }
-                create_metric_cards(metrics, columns=1)
-            
-            with col2:
-                # Delivery performance histogram
-                fig = px.histogram(
-                    delivered_orders,
-                    x='delivery_difference',
-                    title="Delivery Performance Distribution",
-                    labels={'delivery_difference': 'Days (Negative = Early)', 'count': 'Orders'},
-                    color_discrete_sequence=[COLORS['primary']]
-                )
-                fig.update_layout(height=300)
-                display_chart(fig)
-
-def create_review_intelligence(review_data):
-    """Advanced review analytics"""
-    st.header("⭐ Review Intelligence")
-    
-    if review_data.is_empty():
-        st.warning("⚠️ No review data available")
-        return
-    
-    # Review insights
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("⭐ Review Score Analysis")
-        if 'review_score' in review_data.columns:
-            score_dist = review_data['review_score'].value_counts().sort('review_score')
-            fig = create_bar_chart(
-                data=score_dist,
-                x='review_score',
-                y='count',
-                title="Review Score Distribution",
-                labels={'review_score': 'Rating', 'count': 'Number of Reviews'}
-            )
-            display_chart(fig)
-    
-    with col2:
-        st.subheader("📦 Category Performance")
-        if 'product_category_name' in review_data.columns:
-            category_performance = review_data.group_by('product_category_name').agg([
-                pl.col('review_score').mean().alias('Avg Rating'),
-                pl.col('review_score').count().alias('Review Count')
-            ]).sort('Avg Rating', descending=True).limit(10)
-            
-            fig = create_bar_chart(
-                data=category_performance,
-                x='product_category_name',
-                y='Avg Rating',
-                title="Top Categories by Rating",
-                labels={'product_category_name': 'Category', 'Avg Rating': 'Average Rating'}
-            )
-            display_chart(fig)
-    
-    # Time-based analysis
-    if 'review_creation_date' in review_data.columns:
-        st.subheader("📈 Review Trends Over Time")
-        
-        # Handle datetime conversion properly - check if already datetime or string
-        review_data_with_month = review_data.with_columns(
-            pl.when(pl.col("review_creation_date").dtype == pl.String)
-            .then(pl.col("review_creation_date").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False))
-            .otherwise(pl.col("review_creation_date"))
-            .dt.truncate("1mo")
-            .alias("month")
-        )
-        
-        monthly_trends = review_data_with_month.group_by("month").agg(
-            pl.col("review_score").count().alias("Review Count"),
-            pl.col("review_score").mean().alias("Average Score")
-        ).sort("month")
-        
-        # Create dual-axis chart
-        fig = px.line(
-            monthly_trends,
-            x='month',
-            y='Average Score',
-            title="Monthly Review Trends",
-            labels={'month': 'Month', 'Average Score': 'Average Rating'}
-        )
-        display_chart(fig)
-
-def show_data_summary():
-    """Show summary of available data"""
-    st.sidebar.subheader("📊 Data Summary")
-    
-    # Quick data check
-    config = load_config()
-    if config:
-        available_tables = get_available_tables()
-        st.sidebar.write(f"📋 Available tables: {len(available_tables)}")
-        
-        for table in available_tables[:5]:  # Show first 5
-            st.sidebar.write(f"• {table}")
-        
-        if len(available_tables) > 5:
-            st.sidebar.write(f"... and {len(available_tables) - 5} more")
+    # Footer
+    st.markdown("---")
+    st.markdown("*Built with Streamlit + BigQuery + Polars for optimal performance*")
 
 if __name__ == "__main__":
-    show_data_summary()
     main()

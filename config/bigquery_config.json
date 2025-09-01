@@ -1,6 +1,6 @@
 {
   "project_id": "project-olist-470307",
-  "dataset_id": "dbt_olist_stg",
+  "dataset_id": "dbt_olist_dwh",
   "description": "Configuration for Power BI direct connection to BigQuery",
   "recommended_tables": [
     {

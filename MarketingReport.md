@@ -1,6 +1,6 @@
 # Marketing Opportunity Report (3–6 Months)
 
-Data source: project `project-olist-470307`, dataset `dbt_olist_stg` (tables: dim_customer, dim_geolocation, dim_orders, dim_order_reviews, dim_payment, dim_product, dim_seller, fact_order_items)
+Data source: project `project-olist-470307`, dataset `dbt_olist_dwh` (tables: dim_customer, dim_geolocation, dim_orders, dim_order_reviews, dim_payment, dim_product, dim_seller, fact_order_items)
 
 This report outlines five high-impact business questions and actionable recommendations that can be executed in 3–6 months, leveraging the current BigQuery schema.
 
@@ -28,9 +28,9 @@ Example query sketch:
 -- Identify one-time vs repeat customers and time-to-second order
 WITH orders AS (
   SELECT c.customer_unique_id, o.order_id, o.order_purchase_timestamp
-  FROM `project-olist-470307.dbt_olist_stg.fact_order_items` oi
-  JOIN `project-olist-470307.dbt_olist_stg.dim_orders` o ON oi.order_sk = o.order_sk
-  JOIN `project-olist-470307.dbt_olist_stg.dim_customer` c ON oi.customer_sk = c.customer_sk
+  FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+  JOIN `project-olist-470307.dbt_olist_dwh.dim_orders` o ON oi.order_sk = o.order_sk
+  JOIN `project-olist-470307.dbt_olist_dwh.dim_customer` c ON oi.customer_sk = c.customer_sk
   WHERE o.order_status = 'delivered'
 ), ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_unique_id ORDER BY order_purchase_timestamp) rn
@@ -68,8 +68,8 @@ SELECT p.product_category_name_english AS category,
        COUNT(*) AS items,
        SUM(oi.price) AS revenue,
        AVG(oi.review_score) AS avg_review
-FROM `project-olist-470307.dbt_olist_stg.fact_order_items` oi
-JOIN `project-olist-470307.dbt_olist_stg.dim_product` p ON oi.product_sk = p.product_sk
+FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+JOIN `project-olist-470307.dbt_olist_dwh.dim_product` p ON oi.product_sk = p.product_sk
 GROUP BY category
 HAVING items > 100
 ORDER BY revenue DESC;
@@ -99,8 +99,8 @@ Example query sketch:
 WITH cust_spend AS (
   SELECT c.customer_state, c.customer_city, c.customer_unique_id,
          SUM(oi.price) AS total_spent, COUNT(DISTINCT oi.order_id) AS orders
-  FROM `project-olist-470307.dbt_olist_stg.fact_order_items` oi
-  JOIN `project-olist-470307.dbt_olist_stg.dim_customer` c ON oi.customer_sk = c.customer_sk
+  FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+  JOIN `project-olist-470307.dbt_olist_dwh.dim_customer` c ON oi.customer_sk = c.customer_sk
   GROUP BY 1,2,3
 )
 SELECT customer_state, customer_city,
@@ -140,14 +140,14 @@ WITH delivery AS (
          o.order_estimated_delivery_date,
          TIMESTAMP_DIFF(o.order_delivered_customer_date, o.order_purchase_timestamp, DAY) AS actual_days,
          TIMESTAMP_DIFF(o.order_estimated_delivery_date, o.order_purchase_timestamp, DAY) AS est_days
-  FROM `project-olist-470307.dbt_olist_stg.dim_orders` o
+  FROM `project-olist-470307.dbt_olist_dwh.dim_orders` o
   WHERE o.order_delivered_customer_date IS NOT NULL
 ), scored AS (
   SELECT d.order_id,
          (actual_days - est_days) AS delay_days,
          AVG(oi.review_score) AS avg_review
   FROM delivery d
-  JOIN `project-olist-470307.dbt_olist_stg.fact_order_items` oi ON oi.order_id = d.order_id
+  JOIN `project-olist-470307.dbt_olist_dwh.fact_order_items` oi ON oi.order_id = d.order_id
   GROUP BY 1,2
 )
 SELECT * FROM scored ORDER BY delay_days DESC;
@@ -178,8 +178,8 @@ SELECT p.payment_type,
        COUNT(DISTINCT oi.order_id) AS orders,
        SUM(oi.price) AS revenue,
        AVG(oi.price) AS avg_order_value
-FROM `project-olist-470307.dbt_olist_stg.fact_order_items` oi
-JOIN `project-olist-470307.dbt_olist_stg.dim_payment` p USING (payment_sk)
+FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
+JOIN `project-olist-470307.dbt_olist_dwh.dim_payment` p USING (payment_sk)
 GROUP BY p.payment_type
 ORDER BY revenue DESC;
 ```
