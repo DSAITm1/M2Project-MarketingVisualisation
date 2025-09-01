@@ -206,9 +206,13 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
     with col1:
         st.subheader("🎯 Top Performing States")
         if not geo_data.is_empty() and 'total_revenue' in geo_data.columns:
-            top_states = geo_data.groupby('customer_state')['total_revenue'].sum().sort_values(ascending=False).head(5)
+            top_states = geo_data.group_by('customer_state').agg(
+                pl.col('total_revenue').sum()
+            ).sort('total_revenue', descending=True).head(5)
             
-            for i, (state, revenue) in enumerate(top_states.items()):
+            for i, row in enumerate(top_states.iter_rows(named=True)):
+                state = row['customer_state']
+                revenue = row['total_revenue']
                 st.write(f"**{i+1}. {state}**: {format_currency(revenue)}")
     
     with col2:
@@ -296,31 +300,31 @@ def create_customer_intelligence(customer_data):
                 """)
         
         # Segment insights with actionable recommendations
-        segment_stats = customer_data.groupby('customer_segment').agg({
-            'customer_unique_id': 'count',
-            'total_spent': ['sum', 'mean'],
-            'total_orders': 'mean',
-            'avg_review_score': 'mean'
-        }).round(2)
-        
-        segment_stats.columns = ['Count', 'Total Revenue', 'Avg Revenue', 'Avg Orders', 'Avg Rating']
-        segment_stats = segment_stats.sort_values('Total Revenue', ascending=False)
+        segment_stats = customer_data.group_by('customer_segment').agg([
+            pl.col('customer_unique_id').count().alias('Count'),
+            pl.col('total_spent').sum().alias('Total Revenue'),
+            pl.col('total_spent').mean().alias('Avg Revenue'),
+            pl.col('total_orders').mean().alias('Avg Orders'),
+            pl.col('avg_review_score').mean().alias('Avg Rating')
+        ]).sort('Total Revenue', descending=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
             segment_counts = customer_data['customer_segment'].value_counts()
             fig = create_pie_chart(
-                values=segment_counts.values,
-                names=segment_counts.index,
+                values=segment_counts['count'].to_list(),
+                names=segment_counts['customer_segment'].to_list(),
                 title="Customer Segment Distribution"
             )
             display_chart(fig)
         
         with col2:
-            segment_value = customer_data.groupby('customer_segment')['total_spent'].sum().sort_values(ascending=False)
+            segment_value = customer_data.group_by('customer_segment').agg(
+                pl.col('total_spent').sum()
+            ).sort('total_spent', descending=True)
             fig = create_bar_chart(
-                data=segment_value.reset_index(),
+                data=segment_value,
                 x='customer_segment',
                 y='total_spent',
                 title="Revenue by Customer Segment",
@@ -377,7 +381,7 @@ def create_customer_intelligence(customer_data):
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            recency_dist = customer_data['recency_score'].value_counts().sort_index()
+            recency_dist = customer_data['recency_score'].value_counts().sort('recency_score')
             fig = create_bar_chart(
                 data=recency_dist.reset_index(),
                 x='recency_score',
@@ -388,7 +392,7 @@ def create_customer_intelligence(customer_data):
             display_chart(fig)
         
         with col2:
-            frequency_dist = customer_data['frequency_score'].value_counts().sort_index()
+            frequency_dist = customer_data['frequency_score'].value_counts().sort('frequency_score')
             fig = create_bar_chart(
                 data=frequency_dist.reset_index(),
                 x='frequency_score',
@@ -399,7 +403,7 @@ def create_customer_intelligence(customer_data):
             display_chart(fig)
         
         with col3:
-            monetary_dist = customer_data['monetary_score'].value_counts().sort_index()
+            monetary_dist = customer_data['monetary_score'].value_counts().sort('monetary_score')
             fig = create_bar_chart(
                 data=monetary_dist.reset_index(),
                 x='monetary_score',
@@ -516,7 +520,7 @@ def create_review_intelligence(review_data):
     with col1:
         st.subheader("⭐ Review Score Analysis")
         if 'review_score' in review_data.columns:
-            score_dist = review_data['review_score'].value_counts().sort_index()
+            score_dist = review_data['review_score'].value_counts().sort('review_score')
             fig = create_bar_chart(
                 data=score_dist.reset_index(),
                 x='review_score',
