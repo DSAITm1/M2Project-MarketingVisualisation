@@ -556,11 +556,13 @@ def create_review_intelligence(review_data):
     if 'review_creation_date' in review_data.columns:
         st.subheader("📈 Review Trends Over Time")
         
-        # Convert to datetime and extract month using Polars
+        # Handle datetime conversion properly - check if already datetime or string
         review_data_with_month = review_data.with_columns(
-            pl.col("review_creation_date").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
-             .dt.truncate("1mo")
-             .alias("month")
+            pl.when(pl.col("review_creation_date").dtype == pl.String)
+            .then(pl.col("review_creation_date").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False))
+            .otherwise(pl.col("review_creation_date"))
+            .dt.truncate("1mo")
+            .alias("month")
         )
         
         monthly_trends = review_data_with_month.group_by("month").agg(
