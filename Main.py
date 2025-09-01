@@ -468,10 +468,8 @@ def create_order_intelligence(order_data):
             value_counts = order_data.group_by("value_segment").agg(
                 pl.col("value_segment").count().alias("count")
             )
-            # Convert to pandas for Plotly
-            value_counts_pd = value_counts.to_pandas()
             fig = create_bar_chart(
-                data=value_counts_pd,
+                data=value_counts,
                 x='value_segment',
                 y='count',
                 title="Order Value Distribution",
@@ -567,10 +565,6 @@ def create_review_intelligence(review_data):
             pl.col("review_score").count().alias("Review Count"),
             pl.col("review_score").mean().alias("Average Score")
         ).sort("month")
-        
-        # Convert to pandas for Plotly
-        monthly_trends_pd = monthly_trends.to_pandas()
-        monthly_trends_pd['month'] = monthly_trends_pd['month'].astype(str)
         
         # Create dual-axis chart
         fig = px.line(

@@ -146,7 +146,8 @@ def main():
             df = df.with_columns(
                 pl.col('order_purchase_timestamp').dt.hour().alias('hour')
             )
-            peak_hour = df['hour'].mode().to_pandas().iloc[0]
+            peak_hour_df = df['hour'].mode()
+            peak_hour = peak_hour_df.to_pandas().iloc[0]
             st.info(f"🏆 **Peak ordering hour: {peak_hour}:00** - Optimize marketing campaigns for this time")
 
         # State performance

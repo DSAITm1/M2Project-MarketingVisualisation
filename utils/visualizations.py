@@ -33,8 +33,13 @@ def create_metric_cards(metrics: Dict[str, Any], columns: int = 4):
 def create_bar_chart(data: pl.DataFrame, x: str, y: str, title: str, 
                     labels: Optional[Dict[str, str]] = None) -> go.Figure:
     """Create optimized bar chart"""
-    # Convert to pandas for Plotly compatibility
-    pandas_data = data.to_pandas()
+    # Handle both Polars and pandas DataFrames
+    if hasattr(data, 'to_pandas'):
+        # Polars DataFrame
+        pandas_data = data.to_pandas()
+    else:
+        # Already pandas DataFrame
+        pandas_data = data
     
     fig = px.bar(
         pandas_data, 
@@ -72,8 +77,13 @@ def create_pie_chart(values: list, names: list, title: str) -> go.Figure:
 def create_line_chart(data: pl.DataFrame, x: str, y: str, title: str,
                      labels: Optional[Dict[str, str]] = None) -> go.Figure:
     """Create optimized line chart"""
-    # Convert to pandas for Plotly compatibility
-    pandas_data = data.to_pandas()
+    # Handle both Polars and pandas DataFrames
+    if hasattr(data, 'to_pandas'):
+        # Polars DataFrame
+        pandas_data = data.to_pandas()
+    else:
+        # Already pandas DataFrame
+        pandas_data = data
     
     fig = px.line(
         pandas_data,
@@ -95,8 +105,13 @@ def create_map_chart(data: pl.DataFrame, lat: str, lon: str,
                     size: Optional[str] = None, color: Optional[str] = None,
                     title: str = "Geographic Distribution") -> go.Figure:
     """Create optimized map visualization"""
-    # Convert to pandas for Plotly compatibility
-    pandas_data = data.to_pandas()
+    # Handle both Polars and pandas DataFrames
+    if hasattr(data, 'to_pandas'):
+        # Polars DataFrame
+        pandas_data = data.to_pandas()
+    else:
+        # Already pandas DataFrame
+        pandas_data = data
     
     fig = px.scatter_map(
         pandas_data,
@@ -127,8 +142,13 @@ def display_dataframe(df: pl.DataFrame, title: str, max_rows: int = 100):
         st.warning("No data available")
         return
     
-    # Convert to pandas for display
-    pandas_df = df.to_pandas()
+    # Handle both Polars and pandas DataFrames
+    if hasattr(df, 'to_pandas'):
+        # Polars DataFrame
+        pandas_df = df.to_pandas()
+    else:
+        # Already pandas DataFrame
+        pandas_df = df
     
     # Show data info
     col1, col2, col3 = st.columns(3)
