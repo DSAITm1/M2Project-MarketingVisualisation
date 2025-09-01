@@ -152,7 +152,7 @@ def get_review_insights():
     """Get review sentiment analysis"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH review_analysis AS (
