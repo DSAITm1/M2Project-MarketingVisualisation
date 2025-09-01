@@ -1,345 +1,454 @@
 """
 Geographic Analytics Page
-Location-based market intelligence and geospatial analysis
+Deep analysis of customer and order distribution by geographic location
 """
 
 import streamlit as st
 import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
 import sys
 import os
-from datetime import datetime
 
-# Add parent directory to path for utils import
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Add utils to path
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
-from utils.database import get_bigquery_client
-from utils.visualizations import create_metric_cards, create_bar_chart, create_pie_chart, create_line_chart
+from database import get_bigquery_client
 
 st.set_page_config(page_title="Geographic Analytics", page_icon="🗺️", layout="wide")
 
 @st.cache_data(ttl=1800)
-def get_geographic_overview_data():
-    """Get geographic analytics overview data using BigQuery SQL"""
+def get_geographic_analytics_data():
+    """Get comprehensive geographic analytics data"""
     client = get_bigquery_client()
-    
-    query = """
-    WITH geo_analytics AS (
-        SELECT 
-            c.customer_state,
-            c.customer_city,
-            g.geolocation_lat,
-            g.geolocation_lng,
-            COUNT(DISTINCT c.customer_unique_id) as customer_count,
-            COUNT(DISTINCT o.order_id) as order_count,
-            SUM(oi.price) as total_revenue,
-            ROUND(AVG(oi.price), 2) as avg_order_value,
-            ROUND(AVG(r.review_score), 2) as avg_review_score,
-            COUNT(CASE WHEN o.order_status = 'delivered' THEN 1 END) as delivered_orders
-        FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
-        JOIN `project-olist-470307.dbt_olist_dwh.fact_orders` o
-            ON oi.order_sk = o.order_sk
-        JOIN `project-olist-470307.dbt_olist_dwh.dim_customer` c
-            ON o.customer_sk = c.customer_sk
-        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_geolocation` g 
-            ON c.customer_zip_code_prefix = g.geolocation_zip_code_prefix
-        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_order_reviews` r
-            ON o.order_sk = r.order_sk
-        WHERE c.customer_state IS NOT NULL
-        GROUP BY c.customer_state, c.customer_city, g.geolocation_lat, g.geolocation_lng
-    ),
-    
-    geo_overview AS (
-        SELECT 
-            COUNT(DISTINCT customer_state) as total_states,
-            COUNT(DISTINCT customer_city) as total_cities,
-            SUM(customer_count) as total_customers,
-            SUM(order_count) as total_orders,
-            ROUND(SUM(total_revenue), 2) as total_revenue,
-            ROUND(AVG(avg_order_value), 2) as avg_order_value,
-            ROUND(AVG(avg_review_score), 2) as avg_review_score
-        FROM geo_analytics
-    ),
-    
-    state_summary AS (
-        SELECT 
-            customer_state,
-            SUM(customer_count) as state_customers,
-            SUM(order_count) as state_orders,
-            ROUND(SUM(total_revenue), 2) as state_revenue,
-            ROUND(AVG(avg_order_value), 2) as state_avg_order_value,
-            ROUND(AVG(avg_review_score), 2) as state_avg_rating,
-            COUNT(DISTINCT customer_city) as cities_count
-        FROM geo_analytics
-        GROUP BY customer_state
-        ORDER BY state_revenue DESC
-    ),
-    
-    city_summary AS (
-        SELECT 
-            customer_state,
-            customer_city,
-            customer_count as city_customers,
-            order_count as city_orders,
-            ROUND(total_revenue, 2) as city_revenue,
-            ROUND(avg_order_value, 2) as city_avg_order_value,
-            ROUND(avg_review_score, 2) as city_avg_rating,
-            geolocation_lat,
-            geolocation_lng
-        FROM geo_analytics
-        WHERE total_revenue > 1000
-        ORDER BY total_revenue DESC
-        LIMIT 50
-    ),
-    
-    top_cities AS (
-        SELECT 
-            customer_city,
-            customer_state,
-            customer_count,
-            order_count,
-            ROUND(total_revenue, 2) as revenue,
-            ROUND(avg_order_value, 2) as avg_order_value
-        FROM geo_analytics
-        WHERE customer_city IS NOT NULL
-        ORDER BY total_revenue DESC
-        LIMIT 20
-    )
-    
-    SELECT 
-        'overview' as data_type,
-        NULL as customer_state, NULL as customer_city,
-        total_states, total_cities, total_customers, total_orders, 
-        total_revenue, avg_order_value, avg_review_score,
-        NULL as state_customers, NULL as state_orders, NULL as state_revenue,
-        NULL as state_avg_order_value, NULL as state_avg_rating, NULL as cities_count,
-        NULL as city_customers, NULL as city_orders, NULL as city_revenue,
-        NULL as city_avg_order_value, NULL as city_avg_rating,
-        NULL as geolocation_lat, NULL as geolocation_lng,
-        NULL as customer_count, NULL as order_count, NULL as revenue
-    FROM geo_overview
-    
-    UNION ALL
-    
-    SELECT 
-        'state' as data_type,
-        customer_state, NULL as customer_city,
-        NULL as total_states, NULL as total_cities, NULL as total_customers, NULL as total_orders,
-        NULL as total_revenue, NULL as avg_order_value, NULL as avg_review_score,
-        state_customers, state_orders, state_revenue,
-        state_avg_order_value, state_avg_rating, cities_count,
-        NULL as city_customers, NULL as city_orders, NULL as city_revenue,
-        NULL as city_avg_order_value, NULL as city_avg_rating,
-        NULL as geolocation_lat, NULL as geolocation_lng,
-        NULL as customer_count, NULL as order_count, NULL as revenue
-    FROM state_summary
-    
-    UNION ALL
-    
-    SELECT 
-        'city_map' as data_type,
-        customer_state, customer_city,
-        NULL as total_states, NULL as total_cities, NULL as total_customers, NULL as total_orders,
-        NULL as total_revenue, NULL as avg_order_value, NULL as avg_review_score,
-        NULL as state_customers, NULL as state_orders, NULL as state_revenue,
-        NULL as state_avg_order_value, NULL as state_avg_rating, NULL as cities_count,
-        city_customers, city_orders, city_revenue,
-        city_avg_order_value, city_avg_rating,
-        geolocation_lat, geolocation_lng,
-        NULL as customer_count, NULL as order_count, NULL as revenue
-    FROM city_summary
-    
-    UNION ALL
-    
-    SELECT 
-        'top_cities' as data_type,
-        customer_state, customer_city,
-        NULL as total_states, NULL as total_cities, NULL as total_customers, NULL as total_orders,
-        NULL as total_revenue, NULL as avg_order_value, NULL as avg_review_score,
-        NULL as state_customers, NULL as state_orders, NULL as state_revenue,
-        NULL as state_avg_order_value, NULL as state_avg_rating, NULL as cities_count,
-        NULL as city_customers, NULL as city_orders, NULL as city_revenue,
-        NULL as city_avg_order_value, NULL as city_avg_rating,
-        NULL as geolocation_lat, NULL as geolocation_lng,
-        customer_count, order_count, revenue as revenue
-    FROM top_cities
-    
-    ORDER BY data_type, state_revenue DESC, city_revenue DESC, revenue DESC
-    """
+    if not client:
+        return None
     
     try:
-        job = client.query(query)
-        results = job.result()
-        df = pl.from_pandas(results.to_dataframe())
-        return df
+        # Geographic overview using geographic_analytics_obt
+        overview_query = """
+        SELECT 
+            state_code,
+            state_code as state_name,
+            geographic_region,
+            total_customers,
+            total_orders,
+            total_revenue,
+            average_order_value,
+            avg_review_score,
+            market_tier,
+            customers_per_city,
+            revenue_per_customer,
+            market_opportunity_index
+        FROM `project-olist-470307.dbt_olist_analytics.geographic_analytics_obt`
+        ORDER BY total_revenue DESC
+        """
+        
+        overview_result = client.query(overview_query).result()
+        overview_data = pl.from_pandas(overview_result.to_dataframe())
+        
+        # Regional analysis
+        regional_query = """
+        SELECT 
+            geographic_region,
+            COUNT(DISTINCT state_code) as states_count,
+            SUM(total_customers) as region_customers,
+            SUM(total_orders) as region_orders,
+            ROUND(SUM(total_revenue), 2) as region_revenue,
+            ROUND(AVG(average_order_value), 2) as avg_order_value,
+            ROUND(AVG(avg_review_score), 2) as avg_review_score
+        FROM `project-olist-470307.dbt_olist_analytics.geographic_analytics_obt`
+        GROUP BY geographic_region
+        ORDER BY region_revenue DESC
+        """
+        
+        regional_result = client.query(regional_query).result()
+        regional_data = pl.from_pandas(regional_result.to_dataframe())
+        
+        # Market tier analysis
+        tier_query = """
+        SELECT 
+            market_tier,
+            COUNT(DISTINCT state_code) as states_count,
+            SUM(total_customers) as tier_customers,
+            SUM(total_orders) as tier_orders,
+            ROUND(SUM(total_revenue), 2) as tier_revenue,
+            ROUND(AVG(market_opportunity_index), 2) as avg_opportunity_index
+        FROM `project-olist-470307.dbt_olist_analytics.geographic_analytics_obt`
+        WHERE market_tier IS NOT NULL
+        GROUP BY market_tier
+        ORDER BY tier_revenue DESC
+        """
+        
+        tier_result = client.query(tier_query).result()
+        tier_data = pl.from_pandas(tier_result.to_dataframe())
+        
+        return {
+            'overview_data': overview_data,
+            'regional_data': regional_data,
+            'tier_data': tier_data
+        }
+        
     except Exception as e:
-        st.error(f"Error loading geographic data: {str(e)}")
-        return pl.DataFrame()
+        st.error(f"Error loading geographic analytics: {str(e)}")
+        return None
 
-def format_currency_polars(df, col):
-    """Format currency using Polars (10% processing)"""
-    return df.with_columns(
-        pl.col(col).map_elements(lambda x: f"${x:,.2f}" if x is not None else "$0.00", return_dtype=pl.Utf8)
-    )
-
-def display_geographic_overview(df):
-    """Display geographic overview metrics"""
-    overview_data = df.filter(pl.col("data_type") == "overview")
+def create_metric_card(title, value, icon, color="blue"):
+    """Create a colored metric card"""
+    colors = {
+        "blue": "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
+        "green": "linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%)",
+        "orange": "linear-gradient(90deg, #f093fb 0%, #f5576c 100%)",
+        "purple": "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"
+    }
     
-    if overview_data.height > 0:
-        row = overview_data.row(0, named=True)
-        
-        # Create metric cards
-        metrics = [
-            ("Total States", f"{row['total_states']:,}", "🗺️"),
-            ("Total Cities", f"{row['total_cities']:,}", "🏙️"),
-            ("Total Customers", f"{row['total_customers']:,}", "👥"),
-            ("Average Rating", f"{row['avg_review_score']:.2f}/5", "⭐")
-        ]
-        
-        create_metric_cards(metrics)
+    return f"""
+    <div style="
+        background: {colors[color]};
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    ">
+        <h3 style="margin: 0; font-size: 2rem;">{icon}</h3>
+        <h4 style="margin: 0.5rem 0; color: #f0f0f0;">{title}</h4>
+        <h2 style="margin: 0; font-size: 1.8rem;">{value}</h2>
+    </div>
+    """
 
-def display_state_performance(df):
-    """Display state performance analysis"""
-    state_data = df.filter(pl.col("data_type") == "state").head(15)
+def main():
+    """Main geographic analytics function"""
+    st.title("🗺️ Geographic Analytics")
+    st.markdown("**Deep Geographic Analysis for Marketing Strategy**")
     
-    if state_data.height > 0:
-        # Format currency using Polars (10% processing)
-        formatted_data = format_currency_polars(state_data, "state_revenue")
+    # Load data
+    with st.spinner("Loading geographic analytics..."):
+        data = get_geographic_analytics_data()
+    
+    if not data:
+        st.error("Unable to load geographic analytics data.")
+        return
+    
+    overview_data = data['overview_data']
+    regional_data = data['regional_data']
+    tier_data = data['tier_data']
+    
+    # Overall Geographic Metrics
+    st.header("📊 Geographic Market Overview")
+    
+    if not overview_data.is_empty():
+        total_states = overview_data.height
+        total_customers = overview_data.select(pl.sum("total_customers")).item()
+        total_revenue = overview_data.select(pl.sum("total_revenue")).item()
+        avg_opportunity = overview_data.select(pl.mean("market_opportunity_index")).item()
         
-        # Convert to pandas for visualization
-        state_pd = formatted_data.to_pandas()
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(create_metric_card(
+                "States Covered", 
+                f"{total_states}", 
+                "🗺️",
+                "blue"
+            ), unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(create_metric_card(
+                "Total Customers", 
+                f"{total_customers:,}", 
+                "👥",
+                "green"
+            ), unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(create_metric_card(
+                "Total Revenue", 
+                f"${total_revenue:,.0f}", 
+                "💰",
+                "orange"
+            ), unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(create_metric_card(
+                "Avg Opportunity Index", 
+                f"{avg_opportunity:.2f}", 
+                "📈",
+                "purple"
+            ), unsafe_allow_html=True)
+    
+    # Regional Analysis
+    st.header("🌎 Regional Performance Analysis")
+    
+    if not regional_data.is_empty():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Revenue by region
+            regional_pd = regional_data.to_pandas()
+            fig_regional_revenue = px.pie(
+                regional_pd,
+                values='region_revenue',
+                names='geographic_region',
+                title='Revenue Distribution by Region',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig_regional_revenue.update_layout(height=400)
+            st.plotly_chart(fig_regional_revenue, width="stretch")
+        
+        with col2:
+            # Customer distribution by region
+            fig_regional_customers = px.bar(
+                regional_pd,
+                x='geographic_region',
+                y='region_customers',
+                title='Customer Distribution by Region',
+                color='region_customers',
+                color_continuous_scale='Blues'
+            )
+            fig_regional_customers.update_layout(height=400)
+            st.plotly_chart(fig_regional_customers, width="stretch")
+    
+    # State Performance Analysis
+    st.header("🏛️ Top State Performance")
+    
+    if not overview_data.is_empty():
+        # Top 15 states
+        top_states = overview_data.head(15)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            fig = px.bar(
-                state_pd,
-                x='customer_state',
-                y='state_orders',
-                title='Orders by State (Top 15)',
-                labels={'customer_state': 'State', 'state_orders': 'Number of Orders'},
-                text='state_orders'
+            # Top states by revenue
+            states_pd = top_states.to_pandas()
+            fig_states_revenue = px.bar(
+                states_pd,
+                x='total_revenue',
+                y='state_name',
+                orientation='h',
+                title='Top 15 States by Revenue',
+                color='total_revenue',
+                color_continuous_scale='Viridis'
             )
-            fig.update_traces(textposition='outside')
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            fig_states_revenue.update_layout(height=600)
+            st.plotly_chart(fig_states_revenue, width="stretch")
         
         with col2:
-            # Parse currency back to float for revenue chart
-            state_pd['revenue_float'] = state_pd['state_revenue'].str.replace('$', '').str.replace(',', '').astype(float)
-            
-            fig2 = px.bar(
-                state_pd,
-                x='customer_state',
-                y='revenue_float',
-                title='Revenue by State (Top 15)',
-                labels={'customer_state': 'State', 'revenue_float': 'Revenue ($)'},
-                text='state_revenue'
+            # Market opportunity vs revenue scatter
+            fig_opportunity = px.scatter(
+                states_pd,
+                x='total_revenue',
+                y='market_opportunity_index',
+                size='total_customers',
+                color='market_tier',
+                hover_data=['state_name'],
+                title='Market Opportunity vs Revenue',
+                labels={
+                    'total_revenue': 'Total Revenue ($)',
+                    'market_opportunity_index': 'Market Opportunity Index'
+                }
             )
-            fig2.update_traces(textposition='outside')
-            fig2.update_layout(height=400)
-            st.plotly_chart(fig2, use_container_width=True)
-
-def display_geographic_map(df):
-    """Display geographic map with city locations"""
-    city_data = df.filter(pl.col("data_type") == "city_map")
+            fig_opportunity.update_layout(height=600)
+            st.plotly_chart(fig_opportunity, width="stretch")
     
-    if city_data.height > 0:
-        # Filter for cities with valid coordinates
-        map_data = city_data.filter(
-            (pl.col("geolocation_lat").is_not_null()) & 
-            (pl.col("geolocation_lng").is_not_null())
+    # Market Tier Analysis
+    st.header("🎯 Market Tier Performance")
+    
+    if not tier_data.is_empty():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Market tier revenue
+            tier_pd = tier_data.to_pandas()
+            fig_tier_revenue = px.bar(
+                tier_pd,
+                x='market_tier',
+                y='tier_revenue',
+                title='Revenue by Market Tier',
+                color='tier_revenue',
+                color_continuous_scale='Plasma'
+            )
+            fig_tier_revenue.update_layout(height=400)
+            st.plotly_chart(fig_tier_revenue, width="stretch")
+        
+        with col2:
+            # Opportunity index by tier
+            fig_tier_opportunity = px.bar(
+                tier_pd,
+                x='market_tier',
+                y='avg_opportunity_index',
+                title='Average Opportunity Index by Tier',
+                color='avg_opportunity_index',
+                color_continuous_scale='RdYlGn'
+            )
+            fig_tier_opportunity.update_layout(height=400)
+            st.plotly_chart(fig_tier_opportunity, width="stretch")
+    
+    # State Performance Table
+    st.subheader("📊 State Performance Metrics")
+    
+    if not overview_data.is_empty():
+        state_display = overview_data.head(15).select([
+            pl.col("state_name").alias("State"),
+            pl.col("geographic_region").alias("Region"),
+            pl.col("total_customers").alias("Customers"),
+            pl.col("total_orders").alias("Orders"),
+            pl.col("total_revenue").map_elements(lambda x: f"${x:,.0f}", return_dtype=pl.String).alias("Revenue"),
+            pl.col("average_order_value").map_elements(lambda x: f"${x:.2f}", return_dtype=pl.String).alias("AOV"),
+            pl.col("market_tier").alias("Market Tier"),
+            pl.col("market_opportunity_index").map_elements(lambda x: f"{x:.2f}", return_dtype=pl.String).alias("Opportunity Index")
+        ])
+        
+        st.dataframe(state_display, width="stretch")
+    
+    # Geographic Insights Map
+    st.header("🗺️ Geographic Revenue Heatmap")
+    
+    if not overview_data.is_empty():
+        # Create a simple bar chart for state revenue (substitute for map)
+        top_states_map = overview_data.head(20)
+        states_map_pd = top_states_map.to_pandas()
+        
+        fig_heatmap = px.bar(
+            states_map_pd,
+            x='state_code',
+            y='total_revenue',
+            title='Revenue Distribution Across Top 20 States',
+            color='total_revenue',
+            color_continuous_scale='Reds',
+            hover_data=['state_name', 'total_customers', 'market_tier']
         )
+        fig_heatmap.update_layout(height=500)
+        st.plotly_chart(fig_heatmap, width="stretch")
+    
+    # Customer Density Analysis
+    st.header("👥 Customer Density Insights")
+    
+    if not overview_data.is_empty():
+        col1, col2 = st.columns(2)
         
-        if map_data.height > 0:
-            # Convert to pandas for map visualization
-            map_pd = map_data.to_pandas()
+        with col1:
+            # Revenue per customer by state
+            density_data = overview_data.head(15)
+            density_pd = density_data.to_pandas()
             
-            fig = px.scatter_mapbox(
-                map_pd,
-                lat='geolocation_lat',
-                lon='geolocation_lng',
-                size='city_revenue',
-                color='city_avg_rating',
-                hover_name='customer_city',
-                hover_data={
-                    'customer_state': True,
-                    'city_customers': True,
-                    'city_orders': True,
-                    'city_revenue': ':,.2f',
-                    'geolocation_lat': False,
-                    'geolocation_lng': False
-                },
-                mapbox_style='open-street-map',
-                zoom=3,
-                center={'lat': -15.7942, 'lon': -47.8822},  # Brazil center
-                title='Geographic Distribution of Orders and Revenue'
+            fig_density = px.bar(
+                density_pd,
+                x='revenue_per_customer',
+                y='state_name',
+                orientation='h',
+                title='Revenue per Customer by State',
+                color='revenue_per_customer',
+                color_continuous_scale='Blues'
             )
-            fig.update_layout(height=500, margin={"r":0,"t":50,"l":0,"b":0})
-            st.plotly_chart(fig, use_container_width=True)
-
-def display_top_cities(df):
-    """Display top performing cities"""
-    city_data = df.filter(pl.col("data_type") == "top_cities")
-    
-    if city_data.height > 0:
-        # Format currency using Polars (10% processing)
-        formatted_data = format_currency_polars(city_data, "revenue")
+            fig_density.update_layout(height=500)
+            st.plotly_chart(fig_density, width="stretch")
         
-        # Display top cities table
-        st.subheader("Top 20 Cities by Revenue")
-        display_cols = ['customer_city', 'customer_state', 'customer_count', 'order_count', 'revenue']
-        city_display = formatted_data.select(display_cols)
-        st.dataframe(city_display.to_pandas(), use_container_width=True)
-
-def display_state_details(df):
-    """Display detailed state analysis"""
-    state_data = df.filter(pl.col("data_type") == "state")
+        with col2:
+            # Customers per city
+            fig_city_density = px.bar(
+                density_pd,
+                x='customers_per_city',
+                y='state_name',
+                orientation='h',
+                title='Customer Density (Customers per City)',
+                color='customers_per_city',
+                color_continuous_scale='Greens'
+            )
+            fig_city_density.update_layout(height=500)
+            st.plotly_chart(fig_city_density, width="stretch")
     
-    if state_data.height > 0:
-        # Format currency using Polars (10% processing)
-        formatted_data = format_currency_polars(state_data, "state_revenue")
+    # Marketing Strategy Insights
+    st.header("💡 Geographic Marketing Strategy")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        **🎯 Market Expansion**
         
-        st.subheader("State Performance Details")
-        display_cols = ['customer_state', 'state_customers', 'state_orders', 'state_revenue', 
-                       'state_avg_rating', 'cities_count']
-        state_display = formatted_data.select(display_cols)
-        st.dataframe(state_display.to_pandas(), use_container_width=True)
+        • **High-Tier Markets**: Focus advertising spend on Tier 1 markets
+        
+        • **Opportunity Markets**: Target states with high opportunity index
+        
+        • **Regional Strategy**: Customize campaigns by geographic region
+        
+        • **Untapped Potential**: Identify underperforming high-opportunity areas
+        """)
+    
+    with col2:
+        st.markdown("""
+        **📊 Resource Allocation**
+        
+        • **Revenue Concentration**: Prioritize top-performing states
+        
+        • **Customer Density**: Optimize logistics in high-density areas
+        
+        • **Market Penetration**: Increase presence in growing markets
+        
+        • **Competitive Positioning**: Strengthen position in key regions
+        """)
+    
+    with col3:
+        st.markdown("""
+        **🚀 Growth Opportunities**
+        
+        • **Emerging Markets**: Invest in Tier 2 and Tier 3 development
+        
+        • **Regional Partnerships**: Build local partnerships for market entry
+        
+        • **Customer Acquisition**: Target specific geographic segments
+        
+        • **Market Development**: Create region-specific value propositions
+        """)
+    
+    # Regional Performance Comparison
+    if not regional_data.is_empty():
+        st.header("📈 Regional Performance Comparison")
+        
+        regional_comparison = regional_data.select([
+            pl.col("geographic_region").alias("Region"),
+            pl.col("states_count").alias("States"),
+            pl.col("region_customers").alias("Customers"),
+            pl.col("region_revenue").map_elements(lambda x: f"${x:,.0f}", return_dtype=pl.String).alias("Revenue"),
+            pl.col("avg_order_value").map_elements(lambda x: f"${x:.2f}", return_dtype=pl.String).alias("Avg Order Value"),
+            pl.col("avg_review_score").map_elements(lambda x: f"{x:.2f}⭐", return_dtype=pl.String).alias("Avg Review")
+        ])
+        
+        st.dataframe(regional_comparison, width="stretch")
+    
+    # Key Geographic Insights
+    if not overview_data.is_empty() and not tier_data.is_empty():
+        st.header("📋 Key Geographic KPIs")
+        
+        # Calculate insights
+        top_state = overview_data.head(1).select("state_name").item() if not overview_data.is_empty() else "N/A"
+        
+        # Fix the issue with empty dataframes
+        high_tier_filter = tier_data.filter(pl.col("market_tier") == "High Tier") if not tier_data.is_empty() else pl.DataFrame()
+        high_tier_states = high_tier_filter.select("states_count").item() if not high_tier_filter.is_empty() else 0
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Top State", top_state, "By revenue")
+        
+        with col2:
+            regions_count = regional_data.height if not regional_data.is_empty() else 0
+            st.metric("Active Regions", f"{regions_count}", "Geographic coverage")
+        
+        with col3:
+            st.metric("High-Tier States", f"{high_tier_states}", "Premium markets")
+        
+        with col4:
+            avg_revenue_per_state = total_revenue / total_states if total_states > 0 else 0
+            st.metric("Avg Revenue/State", f"${avg_revenue_per_state:,.0f}", "Market distribution")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("*🗺️ Geographic Analytics - Driving Location-Based Marketing Strategy*")
 
-def main():
-    """Main function for Geographic Analytics page"""
-    st.title("🗺️ Geographic Analytics")
-    st.markdown("Location-based market intelligence and geospatial analysis")
-    
-    # Load data
-    with st.spinner("Loading geographic analytics data..."):
-        df = get_geographic_overview_data()
-    
-    if df.height == 0:
-        st.warning("No geographic data available")
-        return
-    
-    # Overview metrics
-    st.header("📊 Geographic Overview")
-    display_geographic_overview(df)
-    
-    # State performance
-    st.header("🏛️ State Performance")
-    display_state_performance(df)
-    
-    # Geographic map
-    st.header("🗺️ Geographic Distribution")
-    display_geographic_map(df)
-    
-    # Top cities
-    st.header("🏙️ Top Cities")
-    display_top_cities(df)
-    
-    # State details
-    st.header("📋 State Details")
-    display_state_details(df)
-
-if __name__ == "__main__":
-    main()
+# Call main function directly for Streamlit pages
+main()

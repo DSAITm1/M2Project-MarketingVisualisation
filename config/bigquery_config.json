@@ -1,7 +1,8 @@
 {
   "project_id": "project-olist-470307",
-  "dataset_id": "dbt_olist_dwh",
-  "description": "Configuration for Power BI direct connection to BigQuery",
+  "dataset_id": "dbt_olist_analytics",
+  "fallback_dataset_id": "dbt_olist_dwh",
+  "description": "Optimized configuration using pre-computed analytics tables",
   "recommended_tables": [
     {
       "table_name": "dim_customer",
