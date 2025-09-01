@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append('utils')
 
-from database import get_bigquery_client
+from utils.database import get_bigquery_client
 import polars as pl
 
 def test_order_analytics():

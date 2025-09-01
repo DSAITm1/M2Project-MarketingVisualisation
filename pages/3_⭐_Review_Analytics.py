@@ -14,7 +14,7 @@ import os
 # Add utils to path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
-from database import get_bigquery_client
+from utils.database import get_bigquery_client
 
 st.set_page_config(page_title="Review Analytics", page_icon="⭐", layout="wide")
 
