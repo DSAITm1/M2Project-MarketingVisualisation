@@ -4,7 +4,7 @@ High-performance Streamlit app with modular architecture
 """
 
 import streamlit as st
-import pandas as pd
+import polars as pl
 import plotly.express as px
 import sys
 import os
@@ -447,16 +447,22 @@ def create_order_intelligence(order_data):
     with col2:
         st.subheader("💰 Order Value Analysis")
         if 'order_value' in order_data.columns:
-            # Create value bins
-            order_data['value_segment'] = pd.cut(
-                order_data['order_value'],
-                bins=[0, 50, 150, 300, float('inf')],
-                labels=['Low ($0-50)', 'Medium ($50-150)', 'High ($150-300)', 'Premium ($300+)']
+            # Create value bins using Polars
+            order_data = order_data.with_columns(
+                pl.when(pl.col("order_value") < 50).then(pl.lit("Low ($0-50)"))
+                .when(pl.col("order_value") < 150).then(pl.lit("Medium ($50-150)"))
+                .when(pl.col("order_value") < 300).then(pl.lit("High ($150-300)"))
+                .otherwise(pl.lit("Premium ($300+)"))
+                .alias("value_segment")
             )
             
-            value_counts = order_data['value_segment'].value_counts()
+            value_counts = order_data.group_by("value_segment").agg(
+                pl.col("value_segment").count().alias("count")
+            )
+            # Convert to pandas for Plotly
+            value_counts_pd = value_counts.to_pandas()
             fig = create_bar_chart(
-                data=value_counts.reset_index(),
+                data=value_counts_pd,
                 x='value_segment',
                 y='count',
                 title="Order Value Distribution",
@@ -542,17 +548,21 @@ def create_review_intelligence(review_data):
     if 'review_creation_date' in review_data.columns:
         st.subheader("📈 Review Trends Over Time")
         
-        # Convert to datetime and extract month
-        review_data_copy = review_data.copy()
-        review_data_copy['review_creation_date'] = pd.to_datetime(review_data_copy['review_creation_date'])
-        review_data_copy['month'] = review_data_copy['review_creation_date'].dt.to_period('M')
+        # Convert to datetime and extract month using Polars
+        review_data_with_month = review_data.with_columns(
+            pl.col("review_creation_date").str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
+             .dt.truncate("1mo")
+             .alias("month")
+        )
         
-        monthly_trends = review_data_copy.groupby('month').agg({
-            'review_score': ['count', 'mean']
-        }).round(2)
-        monthly_trends.columns = ['Review Count', 'Average Score']
-        monthly_trends = monthly_trends.reset_index()
-        monthly_trends['month'] = monthly_trends['month'].astype(str)
+        monthly_trends = review_data_with_month.group_by("month").agg(
+            pl.col("review_score").count().alias("Review Count"),
+            pl.col("review_score").mean().alias("Average Score")
+        ).sort("month")
+        
+        # Convert to pandas for Plotly
+        monthly_trends_pd = monthly_trends.to_pandas()
+        monthly_trends_pd['month'] = monthly_trends_pd['month'].astype(str)
         
         # Create dual-axis chart
         fig = px.line(

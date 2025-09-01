@@ -4,7 +4,7 @@ Advanced customer insights and segmentation with improved performance
 """
 
 import streamlit as st
-import pandas as pd
+import polars as pl
 import plotly.express as px
 import sys
 import os
@@ -24,7 +24,7 @@ def get_customer_cohort_analysis():
     """Get customer cohort analysis for retention insights"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH first_orders AS (
@@ -63,7 +63,7 @@ def get_customer_lifetime_value():
     """Calculate customer lifetime value metrics"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH customer_metrics AS (
@@ -105,7 +105,7 @@ def main():
         cohort_data = get_customer_cohort_analysis()
         clv_data = get_customer_lifetime_value()
     
-    if customer_segments.empty:
+    if customer_segments.is_empty():
         st.error("❌ No customer data available. Please check your data connection.")
         return
     
@@ -124,10 +124,10 @@ def main():
     with col1:
         if 'customer_segment' in customer_segments.columns:
             st.subheader("Segment Distribution")
-            segment_counts = customer_segments['customer_segment'].value_counts()
+            segment_counts = customer_segments.group_by('customer_segment').len().sort('len', descending=True)
             fig = create_pie_chart(
-                values=segment_counts.values,
-                names=segment_counts.index,
+                values=segment_counts['len'].to_list(),
+                names=segment_counts['customer_segment'].to_list(),
                 title="Customer Segments"
             )
             display_chart(fig, key="customer_segments")
@@ -135,9 +135,9 @@ def main():
     with col2:
         if 'customer_segment' in customer_segments.columns and 'total_spent' in customer_segments.columns:
             st.subheader("Revenue by Segment")
-            segment_revenue = customer_segments.groupby('customer_segment')['total_spent'].sum().sort_values(ascending=False)
+            segment_revenue = customer_segments.group_by('customer_segment').agg(pl.col('total_spent').sum()).sort('total_spent', descending=True)
             fig = create_bar_chart(
-                data=segment_revenue.reset_index(),
+                data=segment_revenue,
                 x='customer_segment',
                 y='total_spent',
                 title="Revenue by Customer Segment",
@@ -153,22 +153,22 @@ def main():
     with col1:
         if 'customer_state' in customer_segments.columns:
             st.subheader("Customers by State")
-            state_distribution = customer_segments['customer_state'].value_counts().head(10)
+            state_distribution = customer_segments.group_by('customer_state').len().sort('len', descending=True).limit(10)
             fig = create_bar_chart(
-                data=state_distribution.reset_index(),
+                data=state_distribution,
                 x='customer_state',
-                y='count',
+                y='len',
                 title="Top 10 States by Customer Count",
-                labels={'customer_state': 'State', 'count': 'Customers'}
+                labels={'customer_state': 'State', 'len': 'Customers'}
             )
             display_chart(fig, key="state_distribution")
     
     with col2:
         if 'customer_state' in customer_segments.columns and 'total_spent' in customer_segments.columns:
             st.subheader("Revenue by State") 
-            state_revenue = customer_segments.groupby('customer_state')['total_spent'].sum().sort_values(ascending=False).head(10)
+            state_revenue = customer_segments.group_by('customer_state').agg(pl.col('total_spent').sum()).sort('total_spent', descending=True).limit(10)
             fig = create_bar_chart(
-                data=state_revenue.reset_index(),
+                data=state_revenue,
                 x='customer_state',
                 y='total_spent',
                 title="Top 10 States by Revenue",
@@ -177,7 +177,7 @@ def main():
             display_chart(fig, key="state_revenue")
     
     # Customer Lifetime Value Analysis
-    if not clv_data.empty:
+    if not clv_data.is_empty():
         st.header("💰 Customer Lifetime Value")
         
         col1, col2 = st.columns(2)
@@ -186,16 +186,17 @@ def main():
             st.subheader("CLV Distribution")
             if 'total_spent' in clv_data.columns:
                 # Create CLV segments
-                clv_data['clv_segment'] = pd.cut(
-                    clv_data['total_spent'],
-                    bins=[0, 100, 500, 1000, 2000, float('inf')],
-                    labels=['$0-100', '$100-500', '$500-1K', '$1K-2K', '$2K+']
+                clv_data = clv_data.with_columns(
+                    pl.col('total_spent').cut(
+                        bins=[0, 100, 500, 1000, 2000, float('inf')],
+                        labels=['$0-100', '$100-500', '$500-1K', '$1K-2K', '$2K+']
+                    ).alias('clv_segment')
                 )
                 
-                clv_counts = clv_data['clv_segment'].value_counts()
+                clv_counts = clv_data.group_by('clv_segment').len().sort('len', descending=True)
                 fig = create_pie_chart(
-                    values=clv_counts.values,
-                    names=clv_counts.index,
+                    values=clv_counts['len'].to_list(),
+                    names=clv_counts['clv_segment'].to_list(),
                     title="Customer Lifetime Value Distribution"
                 )
                 display_chart(fig, key="clv_distribution")
@@ -219,7 +220,7 @@ def main():
                 display_chart(fig, key="order_frequency_value")
     
     # Cohort Analysis
-    if not cohort_data.empty:
+    if not cohort_data.is_empty():
         st.header("📈 Customer Retention Cohort Analysis")
         
         # Create cohort table
@@ -230,7 +231,7 @@ def main():
             fill_value=0
         )
         
-        if not cohort_table.empty:
+        if not cohort_table.is_empty():
             st.subheader("Cohort Retention Table")
             
             # Calculate retention rates
@@ -247,7 +248,7 @@ def main():
             display_chart(fig, key="cohort_heatmap")
     
     # Detailed customer data - Business-focused summary
-    if not customer_segments.empty:
+    if not customer_segments.is_empty():
         st.header("📋 Customer Segmentation Summary")
 
         # Create a business-focused view
@@ -276,23 +277,36 @@ def main():
             'last_order_date': 'Last Order'
         }
 
-        business_view = business_view.rename(columns=column_names)
+        business_view = business_view.rename(column_names)
 
         # Format currency and ratings
         if 'Total Spent ($)' in business_view.columns:
-            business_view['Total Spent ($)'] = business_view['Total Spent ($)'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "N/A")
+            business_view = business_view.with_columns(
+                pl.when(pl.col('Total Spent ($)').is_not_null())
+                .then(pl.col('Total Spent ($)').map_elements(lambda x: f"${x:,.2f}"))
+                .otherwise(pl.lit("N/A"))
+                .alias('Total Spent ($)')
+            )
 
         if 'Avg Rating' in business_view.columns:
-            business_view['Avg Rating'] = business_view['Avg Rating'].apply(lambda x: f"{x:.1f}/5" if pd.notnull(x) else "N/A")
+            business_view = business_view.with_columns(
+                pl.when(pl.col('Avg Rating').is_not_null())
+                .then(pl.col('Avg Rating').map_elements(lambda x: f"{x:.1f}/5"))
+                .otherwise(pl.lit("N/A"))
+                .alias('Avg Rating')
+            )
 
         if 'Last Order' in business_view.columns:
-            business_view['Last Order'] = pd.to_datetime(business_view['Last Order']).dt.strftime('%Y-%m-%d')
+            business_view = business_view.with_columns(
+                pl.col('Last Order').str.strptime(pl.Date, "%Y-%m-%d").dt.strftime('%Y-%m-%d').alias('Last Order')
+            )
 
         # Sort by total spent for business relevance
         if 'Total Spent ($)' in business_view.columns:
             # Convert back to numeric for sorting
-            business_view['sort_value'] = customer_segments['total_spent'] if 'total_spent' in customer_segments.columns else 0
-            business_view = business_view.sort_values('sort_value', ascending=False).drop('sort_value', axis=1)
+            sort_value = customer_segments.select('total_spent').to_series().to_list()[0] if 'total_spent' in customer_segments.columns else 0
+            business_view = business_view.with_columns(pl.lit(sort_value).alias('sort_value'))
+            business_view = business_view.sort('sort_value', descending=True).drop('sort_value')
 
         # Display with better formatting
         display_dataframe(business_view, "📊 Top Customers by Value", max_rows=20)
@@ -305,7 +319,7 @@ def main():
 
         with col2:
             if 'Segment' in business_view.columns:
-                top_segment = business_view['Segment'].value_counts().index[0]
+                top_segment = business_view.group_by('Segment').len().sort('len', descending=True).select('Segment').limit(1).to_series().to_list()[0]
                 st.metric("🏆 Top Segment", top_segment)
 
         with col3:

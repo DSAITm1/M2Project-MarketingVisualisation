@@ -4,8 +4,7 @@ Location-based insights and geospatial analysis
 """
 
 import streamlit as st
-import pandas as pd
-from pandas import DatetimeTZDtype
+import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 import sys
@@ -26,7 +25,7 @@ def load_geographic_analytics():
     """Load geographic analytics from BigQuery"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH geo_analytics AS (
@@ -66,7 +65,7 @@ def load_state_summary():
     """Load state-level summary data"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     SELECT 
@@ -98,22 +97,22 @@ def main():
         geo_df = load_geographic_analytics()
         state_df = load_state_summary()
     
-    if geo_df.empty and state_df.empty:
+    if geo_df.is_empty() and state_df.is_empty():
         st.error("No geographic data available.")
         return
     
     # Executive Summary for Marketing Director
     st.header("📊 Geographic Market Overview")
 
-    if not state_df.empty:
+    if not state_df.is_empty():
         # Calculate key market metrics
         total_states = len(state_df)
-        total_customers = state_df['customer_count'].sum()
-        total_revenue = state_df['total_revenue'].sum()
-        avg_order_value = state_df['avg_order_value'].mean()
+        total_customers = state_df.select('customer_count').sum().to_series().to_list()[0]
+        total_revenue = state_df.select('total_revenue').sum().to_series().to_list()[0]
+        avg_order_value = state_df.select('avg_order_value').mean().to_series().to_list()[0]
 
         # Market concentration analysis
-        top_5_revenue = state_df.head(5)['total_revenue'].sum()
+        top_5_revenue = state_df.sort('total_revenue', descending=True).limit(5).select('total_revenue').sum().to_series().to_list()[0]
         market_concentration = (top_5_revenue / total_revenue) * 100
 
         # Geographic performance metrics
@@ -146,15 +145,18 @@ def main():
     with insights_col1:
         st.subheader("💰 Revenue Optimization Opportunities")
 
-        if not state_df.empty:
+        if not state_df.is_empty():
             # High-potential markets
-            high_potential = state_df[
-                (state_df['customer_count'] > state_df['customer_count'].median()) &
-                (state_df['avg_review_score'] > 4.0) &
-                (state_df['total_revenue'] < state_df['total_revenue'].quantile(0.8))
-            ]
+            median_customers = state_df.select('customer_count').median().to_series().to_list()[0]
+            quantile_80_revenue = state_df.select('total_revenue').quantile(0.8).to_series().to_list()[0]
+            
+            high_potential = state_df.filter(
+                (pl.col('customer_count') > median_customers) &
+                (pl.col('avg_review_score') > 4.0) &
+                (pl.col('total_revenue') < quantile_80_revenue)
+            )
 
-            if not high_potential.empty:
+            if not high_potential.is_empty():
                 st.success(f"🎯 **{len(high_potential)} high-potential markets** with strong satisfaction but below-average revenue")
                 st.info("**Recommendation**: Invest in targeted marketing campaigns in these states")
 
@@ -166,14 +168,16 @@ def main():
     with insights_col2:
         st.subheader("📈 Market Expansion Strategy")
 
-        if not state_df.empty:
+        if not state_df.is_empty():
             # Underpenetrated markets
-            underpenetrated = state_df[
-                (state_df['customer_count'] < state_df['customer_count'].quantile(0.3)) &
-                (state_df['avg_review_score'] > 3.5)
-            ]
+            quantile_30_customers = state_df.select('customer_count').quantile(0.3).to_series().to_list()[0]
+            
+            underpenetrated = state_df.filter(
+                (pl.col('customer_count') < quantile_30_customers) &
+                (pl.col('avg_review_score') > 3.5)
+            )
 
-            if not underpenetrated.empty:
+            if not underpenetrated.is_empty():
                 st.warning(f"🚀 **{len(underpenetrated)} underpenetrated markets** with growth potential")
                 st.info("**Recommendation**: Consider market entry strategies for these states")
 
@@ -185,12 +189,12 @@ def main():
     # Market Performance Dashboard
     st.header("📊 Market Performance Dashboard")
 
-    if not state_df.empty:
+    if not state_df.is_empty():
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("💰 Revenue by State")
-            top_revenue_states = state_df.head(15)
+            top_revenue_states = state_df.sort('total_revenue', descending=True).limit(15)
             fig = px.bar(
                 top_revenue_states,
                 x='customer_state',
@@ -215,15 +219,15 @@ def main():
     # Map visualization
     st.header("🗺️ Interactive Map")
     
-    if not geo_df.empty:
+    if not geo_df.is_empty():
         # Filter for better visualization
-        map_data = geo_df[
-            (geo_df['customer_count'] >= 5) &  # At least 5 customers
-            (geo_df['geolocation_lat'].notna()) &
-            (geo_df['geolocation_lng'].notna())
-        ].copy()
+        map_data = geo_df.filter(
+            (pl.col('customer_count') >= 5) &  # At least 5 customers
+            (pl.col('geolocation_lat').is_not_null()) &
+            (pl.col('geolocation_lng').is_not_null())
+        )
         
-        if not map_data.empty:
+        if not map_data.is_empty():
             col1, col2 = st.columns([3, 1])
             
             with col2:
@@ -289,7 +293,7 @@ def main():
     # Regional comparison
     st.header("🏛️ Regional Comparison")
     
-    if not state_df.empty:
+    if not state_df.is_empty():
         # Define Brazilian regions (simplified)
         region_mapping = {
             'SP': 'Southeast', 'RJ': 'Southeast', 'MG': 'Southeast', 'ES': 'Southeast',
@@ -300,15 +304,17 @@ def main():
             'AM': 'North', 'PA': 'North', 'RO': 'North', 'AC': 'North', 'RR': 'North', 'AP': 'North', 'TO': 'North'
         }
         
-        state_df['region'] = state_df['customer_state'].map(region_mapping).fillna('Other')
+        state_df = state_df.with_columns(
+            pl.col('customer_state').map_dict(region_mapping, default='Other').alias('region')
+        )
         
-        regional_summary = state_df.groupby('region').agg({
-            'customer_count': 'sum',
-            'order_count': 'sum',
-            'total_revenue': 'sum',
-            'avg_order_value': 'mean',
-            'avg_review_score': 'mean'
-        }).reset_index()
+        regional_summary = state_df.group_by('region').agg([
+            pl.col('customer_count').sum().alias('customer_count'),
+            pl.col('order_count').sum().alias('order_count'),
+            pl.col('total_revenue').sum().alias('total_revenue'),
+            pl.col('avg_order_value').mean().alias('avg_order_value'),
+            pl.col('avg_review_score').mean().alias('avg_review_score')
+        ])
         
         col1, col2 = st.columns(2)
         
@@ -335,29 +341,33 @@ def main():
     # Market Opportunity Analysis
     st.header("🚀 Market Opportunity Analysis")
     
-    if not state_df.empty:
+    if not state_df.is_empty():
         col1, col2 = st.columns(2)
         
         with col1:
             st.subheader("💎 High-Value Market Opportunities")
             
             # Identify markets with high growth potential
-            high_potential_markets = state_df[
-                (state_df['customer_count'] > state_df['customer_count'].quantile(0.6)) &
-                (state_df['avg_review_score'] > 4.0) &
-                (state_df['total_revenue'] < state_df['total_revenue'].quantile(0.7))
-            ].head(5)
+            quantile_60_customers = state_df.select('customer_count').quantile(0.6).to_series().to_list()[0]
+            quantile_70_revenue = state_df.select('total_revenue').quantile(0.7).to_series().to_list()[0]
             
-            if not high_potential_markets.empty:
+            high_potential_markets = state_df.filter(
+                (pl.col('customer_count') > quantile_60_customers) &
+                (pl.col('avg_review_score') > 4.0) &
+                (pl.col('total_revenue') < quantile_70_revenue)
+            ).sort('total_revenue', descending=True).limit(5)
+            
+            if not high_potential_markets.is_empty():
                 st.success("**Top 5 High-Potential Markets for Investment:**")
-                for idx, row in high_potential_markets.iterrows():
+                for row in high_potential_markets.iter_rows(named=True):
                     st.write(f"🏆 **{row['customer_state']}**: {row['customer_count']:,} customers, "
                            f"${row['total_revenue']:,.0f} revenue, "
                            f"{row['avg_review_score']:.1f}⭐ satisfaction")
                 st.info("💡 **Strategy**: Targeted marketing campaigns and loyalty programs")
             
             # Market penetration analysis
-            market_penetration = (state_df['customer_count'].sum() / 211000000) * 100  # Brazil population estimate
+            total_customers = state_df.select('customer_count').sum().to_series().to_list()[0]
+            market_penetration = (total_customers / 211000000) * 100  # Brazil population estimate
             st.metric("🌍 Market Penetration", f"{market_penetration:.3f}%", 
                      help="Percentage of Brazilian population as customers")
         
@@ -365,23 +375,28 @@ def main():
             st.subheader("🎯 Strategic Expansion Targets")
             
             # Identify underserved markets with good satisfaction
-            expansion_targets = state_df[
-                (state_df['customer_count'] < state_df['customer_count'].quantile(0.4)) &
-                (state_df['avg_review_score'] > 3.8) &
-                (state_df['total_revenue'] > state_df['total_revenue'].quantile(0.2))
-            ].head(5)
+            quantile_40_customers = state_df.select('customer_count').quantile(0.4).to_series().to_list()[0]
+            quantile_20_revenue = state_df.select('total_revenue').quantile(0.2).to_series().to_list()[0]
+            
+            expansion_targets = state_df.filter(
+                (pl.col('customer_count') < quantile_40_customers) &
+                (pl.col('avg_review_score') > 3.8) &
+                (pl.col('total_revenue') > quantile_20_revenue)
+            ).sort('total_revenue', descending=True).limit(5)
             
             if not expansion_targets.empty:
                 st.warning("**Top 5 Strategic Expansion Markets:**")
-                for idx, row in expansion_targets.iterrows():
+                for row in expansion_targets.iter_rows(named=True):
                     st.write(f"🚀 **{row['customer_state']}**: {row['customer_count']:,} customers, "
                            f"${row['total_revenue']:,.0f} revenue, "
                            f"{row['avg_review_score']:.1f}⭐ satisfaction")
                 st.info("💡 **Strategy**: Market development and customer acquisition campaigns")
             
             # Revenue growth potential
-            avg_revenue_per_customer = state_df['total_revenue'].sum() / state_df['customer_count'].sum()
-            potential_new_customers = int(state_df['customer_count'].sum() * 0.2)  # 20% growth target
+            total_revenue = state_df.select('total_revenue').sum().to_series().to_list()[0]
+            total_customers = state_df.select('customer_count').sum().to_series().to_list()[0]
+            avg_revenue_per_customer = total_revenue / total_customers
+            potential_new_customers = int(total_customers * 0.2)  # 20% growth target
             potential_revenue = potential_new_customers * avg_revenue_per_customer
             st.metric("💰 Revenue Growth Potential", f"${potential_revenue:,.0f}", 
                      help="Potential revenue from 20% customer base expansion")
@@ -396,9 +411,9 @@ def main():
             st.subheader("📈 Revenue Optimization")
             
             # Top revenue states for focus
-            top_revenue_states = state_df.head(3)
+            top_revenue_states = state_df.sort('total_revenue', descending=True).limit(3)
             st.success("**Focus Revenue Optimization in Top Markets:**")
-            for idx, row in top_revenue_states.iterrows():
+            for row in top_revenue_states.iter_rows(named=True):
                 st.write(f"💰 **{row['customer_state']}**: ${row['total_revenue']:,.0f} revenue")
             st.info("**Action Items:**\n"
                    "• Implement premium product positioning\n"
@@ -407,7 +422,8 @@ def main():
                    "• Enhance customer experience")
             
             # Cross-selling opportunities
-            high_value_states = state_df[state_df['avg_order_value'] > state_df['avg_order_value'].quantile(0.8)]
+            quantile_80_order_value = state_df.select('avg_order_value').quantile(0.8).to_series().to_list()[0]
+            high_value_states = state_df.filter(pl.col('avg_order_value') > quantile_80_order_value)
             st.metric("🎯 High-Value Markets", f"{len(high_value_states)} states", 
                      help="States with above-average order values")
         
@@ -415,14 +431,16 @@ def main():
             st.subheader("🚀 Market Expansion")
             
             # Market expansion priorities
-            expansion_priority = state_df[
-                (state_df['customer_count'] < state_df['customer_count'].quantile(0.5)) &
-                (state_df['avg_review_score'] > 4.0)
-            ].head(3)
+            quantile_50_customers = state_df.select('customer_count').quantile(0.5).to_series().to_list()[0]
             
-            if not expansion_priority.empty:
+            expansion_priority = state_df.filter(
+                (pl.col('customer_count') < quantile_50_customers) &
+                (pl.col('avg_review_score') > 4.0)
+            ).sort('avg_review_score', descending=True).limit(3)
+            
+            if not expansion_priority.is_empty():
                 st.warning("**Priority Markets for Expansion:**")
-                for idx, row in expansion_priority.iterrows():
+                for row in expansion_priority.iter_rows(named=True):
                     st.write(f"🚀 **{row['customer_state']}**: High satisfaction ({row['avg_review_score']:.1f}⭐) "
                            f"with growth potential")
                 st.info("**Action Items:**\n"
@@ -432,8 +450,8 @@ def main():
                        "• Invest in local market research")
             
             # Customer satisfaction improvement
-            low_satisfaction_states = state_df[state_df['avg_review_score'] < 3.8]
-            if not low_satisfaction_states.empty:
+            low_satisfaction_states = state_df.filter(pl.col('avg_review_score') < 3.8)
+            if not low_satisfaction_states.is_empty():
                 st.error(f"⚠️ **{len(low_satisfaction_states)} markets** need satisfaction improvement")
                 st.info("**Action Items:**\n"
                        "• Conduct customer feedback analysis\n"
@@ -444,19 +462,19 @@ def main():
     # Business Intelligence Summary
     st.header("📊 Business Intelligence Summary")
     
-    if not state_df.empty:
+    if not state_df.is_empty():
         # Key business insights
-        total_market_revenue = state_df['total_revenue'].sum()
-        total_market_customers = state_df['customer_count'].sum()
-        avg_market_satisfaction = state_df['avg_review_score'].mean()
+        total_market_revenue = state_df.select('total_revenue').sum().to_series().to_list()[0]
+        total_market_customers = state_df.select('customer_count').sum().to_series().to_list()[0]
+        avg_market_satisfaction = state_df.select('avg_review_score').mean().to_series().to_list()[0]
         
         # Market concentration analysis
-        top_3_revenue = state_df.head(3)['total_revenue'].sum()
+        top_3_revenue = state_df.sort('total_revenue', descending=True).limit(3).select('total_revenue').sum().to_series().to_list()[0]
         concentration_ratio = (top_3_revenue / total_market_revenue) * 100
         
         # Geographic diversity score
-        revenue_std = state_df['total_revenue'].std()
-        revenue_mean = state_df['total_revenue'].mean()
+        revenue_std = state_df.select('total_revenue').std().to_series().to_list()[0]
+        revenue_mean = state_df.select('total_revenue').mean().to_series().to_list()[0]
         diversity_score = (revenue_std / revenue_mean) * 100
         
         summary_col1, summary_col2, summary_col3 = st.columns(3)
@@ -479,8 +497,10 @@ def main():
         with summary_col3:
             st.subheader("🎯 Strategic KPIs")
             # Calculate customer lifetime value proxy
-            avg_order_value = state_df['avg_order_value'].mean()
-            avg_orders_per_customer = state_df['order_count'].sum() / state_df['customer_count'].sum()
+            avg_order_value = state_df.select('avg_order_value').mean().to_series().to_list()[0]
+            total_orders = state_df.select('order_count').sum().to_series().to_list()[0]
+            total_customers = state_df.select('customer_count').sum().to_series().to_list()[0]
+            avg_orders_per_customer = total_orders / total_customers
             clv_proxy = avg_order_value * avg_orders_per_customer
             st.metric("Customer Value Proxy", f"${clv_proxy:.2f}")
             
@@ -536,14 +556,15 @@ def main():
     tab1, tab2 = st.tabs(["State Summary", "City Details"])
     
     with tab1:
-        if not state_df.empty:
+        if not state_df.is_empty():
             st.subheader("🏛️ State Performance Summary")
-            display_df = state_df.copy()
-            display_df['delivery_rate'] = (display_df['delivered_orders'] / display_df['order_count'] * 100).round(1)
+            display_df = state_df.with_columns(
+                (pl.col('delivered_orders') / pl.col('order_count') * 100).round(1).alias('delivery_rate')
+            )
             st.dataframe(display_df, width="stretch")
     
     with tab2:
-        if not geo_df.empty:
+        if not geo_df.is_empty():
             st.subheader("🏙️ City-Level Details")
             
             # City filters

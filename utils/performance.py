@@ -5,7 +5,7 @@ Track query performance and optimize dashboard loading
 
 import streamlit as st
 import time
-import pandas as pd
+import polars as pl
 from functools import wraps
 import logging
 from typing import Callable, Any
@@ -61,12 +61,12 @@ class PerformanceTracker:
         # Keep only last 10 executions
         metrics[query_name] = metrics[query_name][-10:]
     
-    def get_performance_summary(self) -> pd.DataFrame:
+    def get_performance_summary(self) -> pl.DataFrame:
         """Get performance summary"""
         metrics = st.session_state.performance_metrics
         
         if not metrics:
-            return pd.DataFrame()
+            return pl.DataFrame()
         
         summary_data = []
         for query_name, executions in metrics.items():
@@ -82,7 +82,7 @@ class PerformanceTracker:
                     'Executions': total_executions
                 })
         
-        return pd.DataFrame(summary_data)
+        return pl.DataFrame(summary_data)
     
     def display_performance_dashboard(self):
         """Display performance monitoring dashboard"""
@@ -106,37 +106,32 @@ def enable_debug_mode():
     if st.session_state.show_performance:
         perf_tracker.display_performance_dashboard()
 
-def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
+def optimize_dataframe_memory(df: pl.DataFrame) -> pl.DataFrame:
     """Optimize dataframe memory usage"""
-    if df.empty:
+    if df.is_empty():
         return df
     
-    optimized_df = df.copy()
+    # For Polars, memory optimization is handled automatically
+    # We can still provide some basic optimizations
     
-    # Optimize numeric columns
-    for col in optimized_df.select_dtypes(include=['int64']).columns:
-        if optimized_df[col].min() >= 0:
-            if optimized_df[col].max() < 255:
-                optimized_df[col] = optimized_df[col].astype('uint8')
-            elif optimized_df[col].max() < 65535:
-                optimized_df[col] = optimized_df[col].astype('uint16')
-            elif optimized_df[col].max() < 4294967295:
-                optimized_df[col] = optimized_df[col].astype('uint32')
+    # Convert string columns to categorical if they have low cardinality
+    optimized_expressions = []
+    
+    for col in df.columns:
+        col_dtype = df.select(pl.col(col).dtype).item()
+        
+        # For string columns with low cardinality, keep as string (Polars handles this efficiently)
+        if col_dtype == pl.Utf8:
+            unique_ratio = df.select(pl.col(col).n_unique() / pl.col(col).count()).item()
+            if unique_ratio < 0.5:  # Less than 50% unique values
+                # Polars strings are already memory efficient
+                optimized_expressions.append(pl.col(col))
+            else:
+                optimized_expressions.append(pl.col(col))
         else:
-            if optimized_df[col].min() > -128 and optimized_df[col].max() < 127:
-                optimized_df[col] = optimized_df[col].astype('int8')
-            elif optimized_df[col].min() > -32768 and optimized_df[col].max() < 32767:
-                optimized_df[col] = optimized_df[col].astype('int16')
-            elif optimized_df[col].min() > -2147483648 and optimized_df[col].max() < 2147483647:
-                optimized_df[col] = optimized_df[col].astype('int32')
+            optimized_expressions.append(pl.col(col))
     
-    # Optimize float columns
-    for col in optimized_df.select_dtypes(include=['float64']).columns:
-        optimized_df[col] = pd.to_numeric(optimized_df[col], downcast='float')
+    if optimized_expressions:
+        return df.with_columns(optimized_expressions)
     
-    # Optimize object columns (categorical)
-    for col in optimized_df.select_dtypes(include=['object']).columns:
-        if optimized_df[col].nunique() / len(optimized_df) < 0.5:  # Less than 50% unique values
-            optimized_df[col] = optimized_df[col].astype('category')
-    
-    return optimized_df
+    return df

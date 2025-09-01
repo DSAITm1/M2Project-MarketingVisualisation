@@ -4,8 +4,7 @@ Customer review sentiment and satisfaction analysis
 """
 
 import streamlit as st
-import pandas as pd
-from pandas import DatetimeTZDtype
+import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 import sys
@@ -27,7 +26,7 @@ def load_review_analytics():
     """Load review analytics from BigQuery"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH review_analytics AS (
@@ -69,7 +68,7 @@ def main():
     with st.spinner("Loading customer voice analytics..."):
         df = load_review_analytics()
     
-    if df.empty:
+    if df.is_empty():
         st.error("No customer voice data available.")
         return
     
@@ -80,16 +79,18 @@ def main():
     for col in date_columns:
         if col in df.columns:
             # Handle timezone-aware and timezone-naive datetimes consistently
-            df[col] = pd.to_datetime(df[col], errors='coerce')
-            # Check for timezone-aware datetimes and normalize
-            if isinstance(df[col].dtype, DatetimeTZDtype):
-                df[col] = df[col].dt.tz_convert('UTC').dt.tz_localize(None)
-            # If already timezone-naive, leave as is
+            df = df.with_columns(
+                pl.col(col).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
+                .dt.replace_time_zone("UTC")
+                .dt.convert_time_zone("UTC")
+                .dt.replace_time_zone(None)
+                .alias(col)
+            )
     
     # Executive Summary for Marketing Director
     st.header("📊 Customer Voice Executive Summary")
 
-    if not df.empty:
+    if not df.is_empty():
         # Calculate key customer experience metrics
         total_reviews = len(df)
         avg_satisfaction = df['review_score'].mean()
@@ -134,13 +135,21 @@ def main():
         st.subheader("💎 Customer Satisfaction Drivers")
         
         # Analyze satisfaction by order value ranges
-        df['value_segment'] = pd.cut(df['order_value'], 
-                                   bins=[0, 50, 100, 200, 500, float('inf')],
-                                   labels=['Budget (<$50)', 'Value ($50-100)', 'Standard ($100-200)', 
-                                          'Premium ($200-500)', 'Luxury ($500+)'])
+        df = df.with_columns(
+            pl.col('order_value').cut(
+                bins=[0, 50, 100, 200, 500, float('inf')],
+                labels=['Budget (<$50)', 'Value ($50-100)', 'Standard ($100-200)', 
+                       'Premium ($200-500)', 'Luxury ($500+)']
+            ).alias('value_segment')
+        )
         
-        satisfaction_by_value = df.groupby('value_segment')['review_score'].agg(['mean', 'count']).round(2)
-        satisfaction_by_value = satisfaction_by_value.reset_index()
+        satisfaction_by_value = df.group_by('value_segment').agg([
+            pl.col('review_score').mean().alias('mean'),
+            pl.col('review_score').count().alias('count')
+        ]).with_columns([
+            pl.col('mean').round(2),
+            pl.col('count').round(2)
+        ])
         
         # Find the highest and lowest performing segments
         best_segment = satisfaction_by_value.loc[satisfaction_by_value['mean'].idxmax()]
@@ -157,16 +166,18 @@ def main():
         st.subheader("🌍 Geographic Satisfaction Patterns")
         
         # Geographic satisfaction analysis
-        geo_satisfaction = df.groupby('customer_state').agg({
-            'review_score': ['mean', 'count'],
-            'order_value': 'mean'
-        }).round(2)
-        geo_satisfaction.columns = ['avg_score', 'review_count', 'avg_order_value']
-        geo_satisfaction = geo_satisfaction.reset_index()
+        geo_satisfaction = df.group_by('customer_state').agg([
+            pl.col('review_score').mean().alias('avg_score'),
+            pl.col('review_score').count().alias('review_count'),
+            pl.col('order_value').mean().alias('avg_order_value')
+        ]).with_columns([
+            pl.col('avg_score').round(2),
+            pl.col('avg_order_value').round(2)
+        ])
         
         # Top and bottom performing states
-        top_states = geo_satisfaction.nlargest(3, 'avg_score')
-        bottom_states = geo_satisfaction.nsmallest(3, 'avg_score')
+        top_states = geo_satisfaction.sort('avg_score', descending=True).limit(3)
+        bottom_states = geo_satisfaction.sort('avg_score').limit(3)
         
         st.success("**Top Performing Markets:**")
         for idx, row in top_states.iterrows():
@@ -222,8 +233,12 @@ def main():
     with col2:
         st.subheader("📈 Scores Over Time")
         if 'review_creation_date' in df.columns:
-            df['review_date'] = df['review_creation_date'].dt.date
-            daily_scores = df.groupby('review_date')['review_score'].mean().reset_index()
+            df = df.with_columns(
+                pl.col('review_creation_date').dt.date().alias('review_date')
+            )
+            daily_scores = df.group_by('review_date').agg(
+                pl.col('review_score').mean()
+            )
             
             fig = px.line(
                 daily_scores,
@@ -243,15 +258,17 @@ def main():
     
     with col1:
         st.subheader("📍 Review Scores by State")
-        state_reviews = df.groupby('customer_state').agg({
-            'review_score': ['count', 'mean'],
-            'order_value': 'mean'
-        }).round(2)
-        state_reviews.columns = ['Review Count', 'Avg Score', 'Avg Order Value']
-        state_reviews = state_reviews.reset_index()
+        state_reviews = df.group_by('customer_state').agg([
+            pl.col('review_score').count().alias('Review Count'),
+            pl.col('review_score').mean().alias('Avg Score'),
+            pl.col('order_value').mean().alias('Avg Order Value')
+        ]).with_columns([
+            pl.col('Avg Score').round(2),
+            pl.col('Avg Order Value').round(2)
+        ])
         
         fig = px.scatter(
-            state_reviews.head(20),
+            state_reviews.sort('Review Count', descending=True).limit(20),
             x='Review Count',
             y='Avg Score',
             size='Avg Order Value',
@@ -263,7 +280,7 @@ def main():
     
     with col2:
         st.subheader("🏆 Top States by Satisfaction")
-        top_states = state_reviews.nlargest(15, 'Avg Score')
+        top_states = state_reviews.sort('Avg Score', descending=True).limit(15)
         fig = px.bar(
             top_states,
             x='customer_state',
@@ -292,11 +309,22 @@ def main():
     with col2:
         st.subheader("📈 Score by Value Range")
         # Create value bins
-        df['value_range'] = pd.cut(df['order_value'], 
-                                 bins=[0, 50, 100, 200, 500, float('inf')],
-                                 labels=['$0-50', '$50-100', '$100-200', '$200-500', '$500+'])
+        df = df.with_columns(
+            pl.col('order_value').cut(
+                bins=[0, 50, 100, 200, 500, float('inf')],
+                labels=['$0-50', '$50-100', '$100-200', '$200-500', '$500+']
+            ).alias('value_range')
+        )
         
-        score_by_range = df.groupby('value_range')['review_score'].mean().reset_index()
+        score_by_range = df.group_by('value_range').agg(
+            pl.col('review_score').mean()
+        )
+        fig = px.bar(
+            score_by_range,
+            x='value_range',
+            y='review_score',
+            title="Average Review Score by Order Value Range"
+        )
         fig = px.bar(
             score_by_range,
             x='value_range',
@@ -346,15 +374,15 @@ def main():
         st.plotly_chart(fig, width="stretch")
     
     with col2:
-        if not comments_df.empty:
+        if not comments_df.is_empty():
             st.subheader("📝 Sample Review Comments")
             
             # Sample comments by score
             score_filter = st.selectbox("Filter by Score", [1, 2, 3, 4, 5], index=4)
-            score_comments = comments_df[comments_df['review_score'] == score_filter]
+            score_comments = comments_df.filter(pl.col('review_score') == score_filter)
             
-            if not score_comments.empty:
-                sample_comments = score_comments['review_comment_message'].head(5)
+            if not score_comments.is_empty():
+                sample_comments = score_comments.select('review_comment_message').limit(5).to_series().to_list()
                 for i, comment in enumerate(sample_comments):
                     with st.expander(f"Comment {i+1}"):
                         st.write(comment)
@@ -362,7 +390,7 @@ def main():
     # Strategic Recommendations
     st.header("🎯 Strategic Recommendations")
     
-    if not df.empty:
+    if not df.is_empty():
         rec_col1, rec_col2 = st.columns(2)
         
         with rec_col1:
@@ -374,7 +402,7 @@ def main():
             
             st.error("**Critical Focus Areas:**")
             st.write(f"⚠️ **{len(low_satisfaction_reviews):,} reviews** with scores ≤ 3 need immediate attention")
-            if not high_value_low_satisfaction.empty:
+            if not high_value_low_satisfaction.is_empty():
                 st.write(f"💰 **{len(high_value_low_satisfaction)} high-value customers** with low satisfaction")
             
             st.success("**Action Items:**")
@@ -408,14 +436,14 @@ def main():
             st.write("• Create customer advocacy and loyalty programs")
             
             # Geographic expansion opportunity
-            top_markets = geo_satisfaction.head(5)
+            top_markets = geo_satisfaction.limit(5)
             st.metric("🎯 Top Markets for Expansion", f"{len(top_markets)} high-satisfaction states", 
                      help="Markets with proven customer satisfaction")
     
     # Business Intelligence Summary
     st.header("📊 Customer Voice Intelligence Summary")
     
-    if not df.empty:
+    if not df.is_empty():
         # Key business intelligence metrics
         total_feedback_volume = len(df)
         customer_satisfaction_index = avg_satisfaction * 20  # Convert to 100-point scale
@@ -452,7 +480,8 @@ def main():
             
             # Feedback velocity (recent feedback rate)
             if 'review_creation_date' in df.columns:
-                recent_reviews = df[df['review_creation_date'] >= df['review_creation_date'].max() - pd.Timedelta(days=30)]
+                max_date = df.select('review_creation_date').max().to_series().to_list()[0]
+                recent_reviews = df.filter(pl.col('review_creation_date') >= max_date - pl.duration(days=30))
                 feedback_velocity = len(recent_reviews) / 30
                 st.metric("Daily Feedback Velocity", f"{feedback_velocity:.1f}")
             

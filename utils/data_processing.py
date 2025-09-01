@@ -3,7 +3,7 @@ Data processing utilities
 Common data transformations and business logic
 """
 
-import pandas as pd
+import polars as pl
 import streamlit as st
 from typing import Dict, Any, Optional, List
 from utils.database import execute_query, load_config
@@ -16,7 +16,7 @@ def get_customer_segments():
     """Get customer segmentation analysis"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH customer_metrics AS (
@@ -94,7 +94,7 @@ def get_order_performance():
     """Get order performance metrics"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH order_metrics AS (
@@ -198,7 +198,7 @@ def get_geographic_summary():
     """Get geographic distribution summary"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH geo_summary AS (
@@ -225,9 +225,9 @@ def get_geographic_summary():
     
     return execute_query(query, "Geographic Summary")
 
-def calculate_business_metrics(df: pd.DataFrame) -> Dict[str, Any]:
+def calculate_business_metrics(df: pl.DataFrame) -> Dict[str, Any]:
     """Calculate key business metrics from order data"""
-    if df.empty:
+    if df.is_empty():
         return {}
     
     metrics = {}
@@ -235,64 +235,71 @@ def calculate_business_metrics(df: pd.DataFrame) -> Dict[str, Any]:
     # Revenue metrics
     if 'price' in df.columns or 'total_spent' in df.columns:
         revenue_col = 'total_spent' if 'total_spent' in df.columns else 'price'
-        metrics['Total Revenue'] = f"${df[revenue_col].sum():,.2f}"
-        metrics['Average Order Value'] = f"${df[revenue_col].mean():,.2f}"
+        metrics['Total Revenue'] = f"${df.select(pl.col(revenue_col).sum()).item():,.2f}"
+        metrics['Average Order Value'] = f"${df.select(pl.col(revenue_col).mean()).item():,.2f}"
     
     # Customer metrics
     if 'customer_unique_id' in df.columns:
-        metrics['Total Customers'] = f"{df['customer_unique_id'].nunique():,}"
+        metrics['Total Customers'] = f"{df.select(pl.col('customer_unique_id').n_unique()).item():,}"
     
     # Order metrics
     if 'order_id' in df.columns:
-        metrics['Total Orders'] = f"{df['order_id'].nunique():,}"
+        metrics['Total Orders'] = f"{df.select(pl.col('order_id').n_unique()).item():,}"
     
     # Review metrics
     if 'review_score' in df.columns:
-        metrics['Average Rating'] = f"{df['review_score'].mean():.2f}/5"
+        metrics['Average Rating'] = f"{df.select(pl.col('review_score').mean()).item():.2f}/5"
     
     return metrics
 
-def filter_data_by_date(df: pd.DataFrame, date_column: str, 
-                       start_date: Optional[pd.Timestamp] = None,
-                       end_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+def filter_data_by_date(df: pl.DataFrame, date_column: str,
+                       start_date: Optional[str] = None,
+                       end_date: Optional[str] = None) -> pl.DataFrame:
     """Filter dataframe by date range"""
-    if df.empty or date_column not in df.columns:
+    if df.is_empty() or date_column not in df.columns:
         return df
     
-    filtered_df = df.copy()
+    filtered_df = df.clone()
     
     # Ensure datetime column
-    if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_column]):
-        filtered_df[date_column] = pd.to_datetime(filtered_df[date_column], errors='coerce')
+    if filtered_df.select(pl.col(date_column).dtype).item() != pl.Datetime:
+        filtered_df = filtered_df.with_columns(
+            pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
+        )
     
     # Apply filters
     if start_date:
-        filtered_df = filtered_df[filtered_df[date_column] >= start_date]
+        start_dt = pl.lit(start_date).str.strptime(pl.Datetime, "%Y-%m-%d")
+        filtered_df = filtered_df.filter(pl.col(date_column) >= start_dt)
     
     if end_date:
-        filtered_df = filtered_df[filtered_df[date_column] <= end_date]
+        end_dt = pl.lit(end_date).str.strptime(pl.Datetime, "%Y-%m-%d")
+        filtered_df = filtered_df.filter(pl.col(date_column) <= end_dt)
     
     return filtered_df
 
-def get_top_n_analysis(df: pd.DataFrame, group_by: str, value_col: str, 
-                      n: int = 10, agg_func: str = 'sum') -> pd.DataFrame:
+def get_top_n_analysis(df: pl.DataFrame, group_by: str, value_col: str,
+                      n: int = 10, agg_func: str = 'sum') -> pl.DataFrame:
     """Get top N analysis for any grouping"""
-    if df.empty or group_by not in df.columns or value_col not in df.columns:
-        return pd.DataFrame()
+    if df.is_empty() or group_by not in df.columns or value_col not in df.columns:
+        return pl.DataFrame()
     
     agg_funcs = {
-        'sum': 'sum',
-        'mean': 'mean', 
-        'count': 'count',
-        'max': 'max',
-        'min': 'min'
+        'sum': pl.col(value_col).sum(),
+        'mean': pl.col(value_col).mean(),
+        'count': pl.col(value_col).count(),
+        'max': pl.col(value_col).max(),
+        'min': pl.col(value_col).min()
     }
     
     if agg_func not in agg_funcs:
         agg_func = 'sum'
     
-    result = df.groupby(group_by)[value_col].agg(agg_funcs[agg_func]).sort_values(ascending=False).head(n)
-    return result.reset_index()
+    result = df.group_by(group_by).agg(
+        agg_funcs[agg_func].alias(value_col)
+    ).sort(value_col, descending=True).head(n)
+    
+    return result
 
 def format_currency(amount: float) -> str:
     """Format currency values consistently"""

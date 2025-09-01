@@ -1,20 +1,33 @@
-# Optimized Streamlit Analytics Dashboard Dependencies
-# Core framework
+# ===========================================
+# BigQuery Analytics Dashboard - Dependencies
+# ===========================================
+# IMPORTANT: This project uses POLARS, not pandas!
+# All code has been migrated for optimal performance.
+
+# Core Web Framework
 streamlit>=1.28.0,<2.0.0
 
-# Data processing  
-pandas>=2.2.0,<3.0.0
+# Data Processing - POLARS (High Performance)
+polars>=0.20.0,<1.0.0
 numpy>=1.24.0,<2.0.0
 
-# Google Cloud & BigQuery
+# Google Cloud & BigQuery Integration
 google-cloud-bigquery>=3.13.0,<4.0.0
 google-auth>=2.0.0,<3.0.0
 db-dtypes>=1.0.0,<2.0.0
 
-# Visualization
+# Data Visualization
 plotly>=5.17.0,<6.0.0
 altair>=5.0.0,<6.0.0
 
-# Optional performance enhancements
-pyarrow>=10.0.0  # For better BigQuery performance
-watchdog>=3.0.0  # For better file watching
+# Performance Enhancements
+pyarrow>=10.0.0  # Better BigQuery performance
+watchdog>=3.0.0  # File watching for development
+
+# ===========================================
+# Installation Instructions:
+# 1. Create virtual environment: python -m venv .venv
+# 2. Activate: source .venv/bin/activate (Linux/Mac)
+# 3. Install: pip install -r requirements.txt
+# 4. Verify: python -c "import polars as pl; print('Ready!')"
+# ===========================================
