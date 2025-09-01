@@ -80,8 +80,10 @@ def main():
         if col in df.columns:
             # Handle timezone-aware and timezone-naive datetimes consistently
             df = df.with_columns(
-                pl.col(col).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
-                .dt.replace_time_zone("UTC")
+                pl.when(pl.col(col).dtype == pl.String)
+                .then(pl.col(col).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False))
+                .otherwise(pl.col(col))
+                .dt.replace_time_zone("UTC", ambiguous="earliest")
                 .dt.convert_time_zone("UTC")
                 .dt.replace_time_zone(None)
                 .alias(col)

@@ -132,8 +132,18 @@ def analyze_strategic_insights(df: pl.DataFrame):
         # Delivery performance analysis
         delivered_orders = df.filter(pl.col('order_status') == 'delivered')
         if not delivered_orders.is_empty() and 'order_delivered_customer_date' in delivered_orders.columns:
-            delivered_orders = delivered_orders.with_columns(
-                (pl.col('order_delivered_customer_date') - pl.col('order_estimated_delivery_date'))
+            # Ensure date columns are properly handled (they might already be datetime)
+            delivered_orders = delivered_orders.with_columns([
+                pl.when(pl.col('order_delivered_customer_date').dtype == pl.String)
+                .then(pl.col('order_delivered_customer_date').str.to_datetime())
+                .otherwise(pl.col('order_delivered_customer_date'))
+                .alias('delivered_date'),
+                pl.when(pl.col('order_estimated_delivery_date').dtype == pl.String)
+                .then(pl.col('order_estimated_delivery_date').str.to_datetime())
+                .otherwise(pl.col('order_estimated_delivery_date'))
+                .alias('estimated_date')
+            ]).with_columns(
+                (pl.col('delivered_date') - pl.col('estimated_date'))
                 .dt.total_days().alias('delivery_diff')
             )
             on_time_rate = (delivered_orders.filter(pl.col('delivery_diff') <= 0).height / delivered_orders.height) * 100

@@ -320,8 +320,9 @@ def create_customer_intelligence(customer_data):
         with col1:
             segment_counts = customer_data['customer_segment'].value_counts()
             fig = create_pie_chart(
-                values=segment_counts['count'].to_list(),
-                names=segment_counts['customer_segment'].to_list(),
+                data=segment_counts,
+                values='count',
+                names='customer_segment',
                 title="Customer Segment Distribution"
             )
             display_chart(fig)
@@ -447,8 +448,9 @@ def create_order_intelligence(order_data):
         if 'order_status' in order_data.columns:
             status_counts = order_data['order_status'].value_counts()
             fig = create_pie_chart(
-                values=status_counts['count'].to_list(),
-                names=status_counts['order_status'].to_list(),
+                data=status_counts,
+                values='count',
+                names='order_status',
                 title="Order Status Distribution"
             )
             display_chart(fig)
@@ -481,7 +483,7 @@ def create_order_intelligence(order_data):
     if 'delivery_difference' in order_data.columns:
         st.subheader("⏱️ Delivery Performance Analysis")
         
-        delivered_orders = order_data[order_data['order_status'] == 'delivered'].copy()
+        delivered_orders = order_data.filter(pl.col('order_status') == 'delivered')
         if not delivered_orders.is_empty():
             col1, col2 = st.columns(2)
             

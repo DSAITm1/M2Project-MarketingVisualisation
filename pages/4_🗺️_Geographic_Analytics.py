@@ -162,8 +162,9 @@ def main():
 
             # Market efficiency analysis
             revenue_per_customer = state_df['total_revenue'] / state_df['customer_count']
-            efficient_markets = state_df[revenue_per_customer > revenue_per_customer.quantile(0.8)]
-            st.metric("⚡ High-Efficiency Markets", f"{len(efficient_markets)} states", help="Markets with highest revenue per customer")
+            revenue_threshold = revenue_per_customer.quantile(0.8)
+            efficient_markets = state_df.filter(revenue_per_customer > revenue_threshold)
+            st.metric("⚡ High-Efficiency Markets", f"{efficient_markets.height} states", help="Markets with highest revenue per customer")
 
     with insights_col2:
         st.subheader("📈 Market Expansion Strategy")

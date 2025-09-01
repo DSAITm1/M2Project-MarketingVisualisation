@@ -126,8 +126,9 @@ def main():
             st.subheader("Segment Distribution")
             segment_counts = customer_segments.group_by('customer_segment').len().sort('len', descending=True)
             fig = create_pie_chart(
-                values=segment_counts['len'].to_list(),
-                names=segment_counts['customer_segment'].to_list(),
+                data=segment_counts,
+                values='len',
+                names='customer_segment',
                 title="Customer Segments"
             )
             display_chart(fig, key="customer_segments")
@@ -185,18 +186,20 @@ def main():
         with col1:
             st.subheader("CLV Distribution")
             if 'total_spent' in clv_data.columns:
-                # Create CLV segments
+                # Create CLV segments using Polars when/then logic
                 clv_data = clv_data.with_columns(
-                    pl.col('total_spent').cut(
-                        bins=[0, 100, 500, 1000, 2000, float('inf')],
-                        labels=['$0-100', '$100-500', '$500-1K', '$1K-2K', '$2K+']
-                    ).alias('clv_segment')
+                    pl.when(pl.col('total_spent') <= 100).then(pl.lit('$0-100'))
+                    .when(pl.col('total_spent') <= 500).then(pl.lit('$100-500'))
+                    .when(pl.col('total_spent') <= 1000).then(pl.lit('$500-1K'))
+                    .when(pl.col('total_spent') <= 2000).then(pl.lit('$1K-2K'))
+                    .otherwise(pl.lit('$2K+')).alias('clv_segment')
                 )
                 
                 clv_counts = clv_data.group_by('clv_segment').len().sort('len', descending=True)
                 fig = create_pie_chart(
-                    values=clv_counts['len'].to_list(),
-                    names=clv_counts['clv_segment'].to_list(),
+                    data=clv_counts,
+                    values='len',
+                    names='clv_segment',
                     title="Customer Lifetime Value Distribution"
                 )
                 display_chart(fig, key="clv_distribution")
@@ -234,9 +237,16 @@ def main():
         if not cohort_table.is_empty():
             st.subheader("Cohort Retention Table")
             
+            # Calculate retention rates using pure Polars
+            cohort_sizes = cohort_data.filter(pl.col('period_number') == 0).select(['cohort_month', 'customers'])
+            
+            # Convert to pandas only for the heatmap visualization
+            retention_table = cohort_table.to_pandas()
+            cohort_sizes_dict = dict(zip(cohort_sizes['cohort_month'].to_list(), cohort_sizes['customers'].to_list()))
+            
             # Calculate retention rates
-            cohort_sizes = cohort_data[cohort_data['period_number'] == 0].set_index('cohort_month')['customers']
-            retention_table = cohort_table.divide(cohort_sizes, axis=0)
+            for col in retention_table.columns:
+                retention_table[col] = retention_table[col] / retention_table.index.map(cohort_sizes_dict)
             
             # Display heatmap
             fig = px.imshow(
@@ -251,13 +261,14 @@ def main():
     if not customer_segments.is_empty():
         st.header("📋 Customer Segmentation Summary")
 
-        # Create a business-focused view
-        business_view = customer_segments.copy()
+        # Create a business-focused view using Polars
+        business_view = customer_segments.clone()
 
         # Format customer ID for privacy (show first 8 chars)
         if 'customer_unique_id' in business_view.columns:
-            business_view['customer_id'] = business_view['customer_unique_id'].str[:8] + '...'
-            business_view = business_view.drop('customer_unique_id', axis=1)
+            business_view = business_view.with_columns(
+                pl.col('customer_unique_id').str.slice(0, 8).str.concat(pl.lit('...')).alias('customer_id')
+            ).drop('customer_unique_id')
 
         # Select and reorder columns for business relevance
         key_columns = ['customer_id', 'customer_segment', 'customer_state', 'total_orders', 'total_spent', 'avg_review_score', 'last_order_date']
