@@ -46,7 +46,7 @@ def get_review_overview_data():
         FROM `project-olist-470307.dbt_olist_dwh.dim_order_reviews` r
         LEFT JOIN `project-olist-470307.dbt_olist_dwh.fact_orders` o 
             ON r.order_sk = o.order_sk
-        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_customers` c
+        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_customer` c
             ON o.customer_sk = c.customer_sk
         WHERE r.review_score IS NOT NULL
     ),

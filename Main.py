@@ -44,11 +44,11 @@ def get_dashboard_overview_data():
         FROM `project-olist-470307.dbt_olist_dwh.fact_order_items` oi
         JOIN `project-olist-470307.dbt_olist_dwh.fact_orders` o
             ON oi.order_sk = o.order_sk
-        JOIN `project-olist-470307.dbt_olist_dwh.dim_customers` c
+        JOIN `project-olist-470307.dbt_olist_dwh.dim_customer` c
             ON o.customer_sk = c.customer_sk
         LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_order_reviews` r
             ON o.order_sk = r.order_sk
-        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_products` p
+        LEFT JOIN `project-olist-470307.dbt_olist_dwh.dim_product` p
             ON oi.product_sk = p.product_sk
     ),
     
