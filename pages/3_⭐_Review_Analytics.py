@@ -100,7 +100,7 @@ def main():
         net_promoter_score = promoter_rate - detractor_rate
         
         # Customer experience insights
-        comment_rate = (df['review_comment_message'].notna() & (df['review_comment_message'] != '')).mean() * 100
+        comment_rate = ((df['review_comment_message'].is_not_null()) & (df['review_comment_message'] != '')).mean() * 100
         avg_order_value = df['order_value'].mean()
         
         # Geographic coverage
@@ -152,13 +152,13 @@ def main():
         ])
         
         # Find the highest and lowest performing segments
-        best_segment = satisfaction_by_value.loc[satisfaction_by_value['mean'].idxmax()]
-        worst_segment = satisfaction_by_value.loc[satisfaction_by_value['mean'].idxmin()]
+        best_segment_row = satisfaction_by_value.sort('mean', descending=True).limit(1)
+        worst_segment_row = satisfaction_by_value.sort('mean', descending=False).limit(1)
         
-        st.success(f"🏆 **Best Performing Segment**: {best_segment['value_segment']} "
-                  f"({best_segment['mean']:.2f}⭐ from {best_segment['count']:,} reviews)")
-        st.error(f"⚠️ **Improvement Needed**: {worst_segment['value_segment']} "
-                f"({worst_segment['mean']:.2f}⭐ from {worst_segment['count']:,} reviews)")
+        st.success(f"🏆 **Best Performing Segment**: {best_segment_row['value_segment'].item()} "
+                  f"({best_segment_row['mean'].item():.2f}⭐ from {best_segment_row['count'].item():,} reviews)")
+        st.error(f"⚠️ **Improvement Needed**: {worst_segment_row['value_segment'].item()} "
+                f"({worst_segment_row['mean'].item():.2f}⭐ from {worst_segment_row['count'].item():,} reviews)")
         
         st.info("💡 **Strategic Insight**: Focus premium customer experience on budget segments to improve overall satisfaction")
 
@@ -205,7 +205,7 @@ def main():
         st.metric("Average Score", f"{avg_score:.2f}")
     
     with col3:
-        review_rate = (df['review_score'].notna().sum() / len(df)) * 100
+        review_rate = (df['review_score'].is_not_null().sum() / df.height) * 100
         st.metric("Review Rate", f"{review_rate:.1f}%")
     
     with col4:
@@ -219,13 +219,14 @@ def main():
     
     with col1:
         st.subheader("🌟 Score Distribution")
-        score_counts = df['review_score'].value_counts().sort_index()
+        score_counts = df['review_score'].value_counts().sort('review_score')
+        score_counts_pd = score_counts.to_pandas()
         fig = px.bar(
-            x=score_counts.index,
-            y=score_counts.values,
+            x=score_counts_pd['review_score'],
+            y=score_counts_pd['count'],
             title="Review Score Distribution",
             labels={'x': 'Review Score', 'y': 'Count'},
-            color=score_counts.index,
+            color=score_counts_pd['review_score'],
             color_continuous_scale='RdYlGn'
         )
         st.plotly_chart(fig, width="stretch")
@@ -296,8 +297,10 @@ def main():
     
     with col1:
         st.subheader("📊 Value vs Score Correlation")
+        sample_size = min(5000, df.height)
+        df_sample = df.sample(n=sample_size)
         fig = px.scatter(
-            df.sample(min(5000, len(df))),  # Sample for performance
+            df_sample.to_pandas(),  # Convert for Plotly
             x='order_value',
             y='review_score',
             color='customer_state',
@@ -337,12 +340,15 @@ def main():
     st.header("💬 Review Comments Analysis")
     
     # Comments with text
-    comments_df = df[df['review_comment_message'].notna() & (df['review_comment_message'] != '')]
+    comments_df = df.filter(
+        (pl.col('review_comment_message').is_not_null()) & 
+        (pl.col('review_comment_message') != '')
+    )
     
     col1, col2 = st.columns(2)
     
     with col1:
-        comment_rate = (len(comments_df) / len(df)) * 100
+        comment_rate = (comments_df.height / df.height) * 100
         st.metric("Comment Rate", f"{comment_rate:.1f}%")
         
         # Score distribution for comments vs no comments
@@ -357,7 +363,10 @@ def main():
         ))
         
         # No comments
-        no_comments_df = df[df['review_comment_message'].isna() | (df['review_comment_message'] == '')]
+        no_comments_df = df.filter(
+            (pl.col('review_comment_message').is_null()) | 
+            (pl.col('review_comment_message') == '')
+        )
         fig.add_trace(go.Histogram(
             x=no_comments_df['review_score'],
             name='No Comments',
@@ -412,17 +421,20 @@ def main():
             st.write("• Establish customer success teams for premium segments")
             
             # Promoter program opportunity
-            promoter_opportunity = df[df['review_score'] >= 4]
-            st.metric("🌟 Promoter Program Potential", f"{len(promoter_opportunity):,} customers", 
+            promoter_opportunity = df.filter(pl.col('review_score') >= 4)
+            st.metric("🌟 Promoter Program Potential", f"{promoter_opportunity.height:,} customers", 
                      help="Customers who could become brand advocates")
         
         with rec_col2:
             st.subheader("📈 Voice of Customer Strategy")
             
             # Comment analysis insights
-            comments_with_feedback = df[df['review_comment_message'].notna() & (df['review_comment_message'] != '')]
-            high_score_comments = comments_with_feedback[comments_with_feedback['review_score'] >= 4]
-            low_score_comments = comments_with_feedback[comments_with_feedback['review_score'] <= 2]
+            comments_with_feedback = df.filter(
+                (pl.col('review_comment_message').is_not_null()) & 
+                (pl.col('review_comment_message') != '')
+            )
+            high_score_comments = comments_with_feedback.filter(pl.col('review_score') >= 4)
+            low_score_comments = comments_with_feedback.filter(pl.col('review_score') <= 2)
             
             st.info("**Voice of Customer Insights:**")
             st.write(f"💬 **{len(comments_with_feedback):,} customers** provided detailed feedback")

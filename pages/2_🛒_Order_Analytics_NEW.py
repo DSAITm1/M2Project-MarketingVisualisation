@@ -148,7 +148,7 @@ def analyze_strategic_insights(df: pl.DataFrame):
                 pl.col('order_purchase_timestamp').dt.hour().alias('hour')
             )
             peak_hour_df = df_with_hour['hour'].mode()
-            peak_hour = peak_hour_df.item()
+            peak_hour = peak_hour_df['hour'][0]
             st.info(f"🏆 **Peak ordering hour: {peak_hour}:00** - Optimize marketing campaigns for this time")
 
         # State performance using Polars

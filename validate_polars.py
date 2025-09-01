@@ -113,7 +113,7 @@ def test_visualizations():
         fig = create_bar_chart(test_df, 'category', 'value', 'Test Chart')
         print("✅ Bar chart creation successful")
         
-        fig2 = create_pie_chart([10, 20, 15], ['A', 'B', 'C'], 'Test Pie')
+        fig2 = create_pie_chart(test_df, 'value', 'category', 'Test Pie')
         print("✅ Pie chart creation successful")
         
         return True

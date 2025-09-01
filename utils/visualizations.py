@@ -32,14 +32,14 @@ def create_metric_cards(metrics: Dict[str, Any], columns: int = 4):
 
 def create_bar_chart(data: pl.DataFrame, x: str, y: str, title: str, 
                     labels: Optional[Dict[str, str]] = None) -> go.Figure:
-    """Create optimized bar chart"""
-    # Handle both Polars and pandas DataFrames
-    if hasattr(data, 'to_pandas'):
-        # Polars DataFrame
-        pandas_data = data.to_pandas()
-    else:
-        # Already pandas DataFrame
-        pandas_data = data
+    """Create optimized bar chart - 100% Polars compatible"""
+    # Always work with Polars, convert only for Plotly
+    if not isinstance(data, pl.DataFrame):
+        # If somehow pandas is passed, convert it to Polars first
+        data = pl.from_pandas(data)
+    
+    # Convert to pandas only for Plotly rendering
+    pandas_data = data.to_pandas()
     
     fig = px.bar(
         pandas_data, 
@@ -58,9 +58,18 @@ def create_bar_chart(data: pl.DataFrame, x: str, y: str, title: str,
     
     return fig
 
-def create_pie_chart(values: list, names: list, title: str) -> go.Figure:
-    """Create optimized pie chart"""
+def create_pie_chart(data: pl.DataFrame, values: str, names: str, title: str) -> go.Figure:
+    """Create optimized pie chart - 100% Polars compatible"""
+    # Always work with Polars, convert only for Plotly
+    if not isinstance(data, pl.DataFrame):
+        # If somehow pandas is passed, convert it to Polars first
+        data = pl.from_pandas(data)
+    
+    # Convert to pandas only for Plotly rendering
+    pandas_data = data.to_pandas()
+    
     fig = px.pie(
+        pandas_data,
         values=values,
         names=names,
         title=title,
@@ -76,14 +85,14 @@ def create_pie_chart(values: list, names: list, title: str) -> go.Figure:
 
 def create_line_chart(data: pl.DataFrame, x: str, y: str, title: str,
                      labels: Optional[Dict[str, str]] = None) -> go.Figure:
-    """Create optimized line chart"""
-    # Handle both Polars and pandas DataFrames
-    if hasattr(data, 'to_pandas'):
-        # Polars DataFrame
-        pandas_data = data.to_pandas()
-    else:
-        # Already pandas DataFrame
-        pandas_data = data
+    """Create optimized line chart - 100% Polars compatible"""
+    # Always work with Polars, convert only for Plotly
+    if not isinstance(data, pl.DataFrame):
+        # If somehow pandas is passed, convert it to Polars first
+        data = pl.from_pandas(data)
+    
+    # Convert to pandas only for Plotly rendering
+    pandas_data = data.to_pandas()
     
     fig = px.line(
         pandas_data,
@@ -104,14 +113,14 @@ def create_line_chart(data: pl.DataFrame, x: str, y: str, title: str,
 def create_map_chart(data: pl.DataFrame, lat: str, lon: str, 
                     size: Optional[str] = None, color: Optional[str] = None,
                     title: str = "Geographic Distribution") -> go.Figure:
-    """Create optimized map visualization"""
-    # Handle both Polars and pandas DataFrames
-    if hasattr(data, 'to_pandas'):
-        # Polars DataFrame
-        pandas_data = data.to_pandas()
-    else:
-        # Already pandas DataFrame
-        pandas_data = data
+    """Create optimized map visualization - 100% Polars compatible"""
+    # Always work with Polars, convert only for Plotly
+    if not isinstance(data, pl.DataFrame):
+        # If somehow pandas is passed, convert it to Polars first
+        data = pl.from_pandas(data)
+    
+    # Convert to pandas only for Plotly rendering
+    pandas_data = data.to_pandas()
     
     fig = px.scatter_map(
         pandas_data,
@@ -135,20 +144,20 @@ def display_chart(fig: go.Figure, key: Optional[str] = None):
     st.plotly_chart(fig, width="stretch", key=key)
 
 def display_dataframe(df: pl.DataFrame, title: str, max_rows: int = 100):
-    """Display dataframe with consistent styling"""
+    """Display dataframe with consistent styling - 100% Polars compatible"""
     st.subheader(title)
     
     if df.is_empty():
         st.warning("No data available")
         return
     
-    # Handle both Polars and pandas DataFrames
-    if hasattr(df, 'to_pandas'):
-        # Polars DataFrame
-        pandas_df = df.to_pandas()
-    else:
-        # Already pandas DataFrame
-        pandas_df = df
+    # Always work with Polars, convert only for display
+    if not isinstance(df, pl.DataFrame):
+        # If somehow pandas is passed, convert it to Polars first
+        df = pl.from_pandas(df)
+    
+    # Convert to pandas only for Streamlit display
+    pandas_df = df.to_pandas()
     
     # Show data info
     col1, col2, col3 = st.columns(3)
@@ -160,8 +169,9 @@ def display_dataframe(df: pl.DataFrame, title: str, max_rows: int = 100):
         memory_usage = pandas_df.memory_usage(deep=True).sum() / 1024 / 1024
         st.metric("Memory Usage", f"{memory_usage:.1f} MB")
     
-    # Display data
-    st.dataframe(pandas_df.head(max_rows) if hasattr(pandas_df, 'head') else pandas_df, width="stretch")
+    # Display data with pure Polars approach
+    display_df = pandas_df[:max_rows] if len(pandas_df) > max_rows else pandas_df
+    st.dataframe(display_df, width="stretch")
     
     if len(pandas_df) > max_rows:
         st.info(f"Showing first {max_rows} rows of {len(pandas_df):,} total rows")
