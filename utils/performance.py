@@ -114,24 +114,40 @@ def optimize_dataframe_memory(df: pl.DataFrame) -> pl.DataFrame:
     # For Polars, memory optimization is handled automatically
     # We can still provide some basic optimizations
     
-    # Convert string columns to categorical if they have low cardinality
-    optimized_expressions = []
-    
-    for col in df.columns:
-        col_dtype = df.select(pl.col(col).dtype).item()
+    try:
+        # Convert string columns to categorical if they have low cardinality
+        optimized_expressions = []
         
-        # For string columns with low cardinality, keep as string (Polars handles this efficiently)
-        if col_dtype == pl.Utf8:
-            unique_ratio = df.select(pl.col(col).n_unique() / pl.col(col).count()).item()
-            if unique_ratio < 0.5:  # Less than 50% unique values
-                # Polars strings are already memory efficient
+        for col in df.columns:
+            try:
+                col_dtype_result = df.select(pl.col(col).dtype)
+                if col_dtype_result.is_empty():
+                    optimized_expressions.append(pl.col(col))
+                    continue
+                    
+                col_dtype = col_dtype_result.item()
+                
+                # For string columns with low cardinality, keep as string (Polars handles this efficiently)
+                if col_dtype == pl.Utf8:
+                    unique_count = df.select(pl.col(col).n_unique()).item()
+                    total_count = df.select(pl.col(col).count()).item()
+                    unique_ratio = unique_count / total_count if total_count > 0 else 0
+                    if unique_ratio < 0.5:  # Less than 50% unique values
+                        # Polars strings are already memory efficient
+                        optimized_expressions.append(pl.col(col))
+                    else:
+                        optimized_expressions.append(pl.col(col))
+                else:
+                    optimized_expressions.append(pl.col(col))
+            except Exception:
+                # If any error occurs with a column, just keep it as is
                 optimized_expressions.append(pl.col(col))
-            else:
-                optimized_expressions.append(pl.col(col))
-        else:
-            optimized_expressions.append(pl.col(col))
-    
-    if optimized_expressions:
-        return df.with_columns(optimized_expressions)
+        
+        if optimized_expressions:
+            return df.with_columns(optimized_expressions)
+            
+    except Exception:
+        # If any error occurs in optimization, return original dataframe
+        pass
     
     return df

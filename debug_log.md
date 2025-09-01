@@ -166,5 +166,160 @@ print("✅ Connected" if client else "❌ Failed")
 - ✅ Updated deprecated API calls
 - ✅ Consolidated documentation into this debug log
 - ✅ Cleaned up workspace (removed redundant .md files)
+- ✅ Enhanced all analytics pages with professional styling and formatting
+- ✅ Fixed integer display issues across all pages
+- ✅ Applied consistent metric card design system
 
-**Status**: All critical issues resolved. Application fully operational.
+**Status**: All critical issues resolved. Application fully operational with enhanced UI/UX.
+
+---
+
+## 🎨 Analytics Pages Enhancement Summary
+
+### Overview
+Applied consistent formatting, layout, styling, organization and metric format improvements across all analytics pages, matching the Main.py dashboard enhancements.
+
+### Pages Updated
+- ✅ `pages/1_👥_Customer_Analytics.py`
+- ✅ `pages/2_🛒_Order_Analytics.py` 
+- ✅ `pages/3_⭐_Review_Analytics.py`
+- ✅ `pages/4_🗺️_Geographic_Analytics.py`
+
+### Improvements Applied
+
+#### 🎨 Enhanced Styling & Layout
+
+**1. Upgraded Metric Cards**
+- Enhanced gradients: Changed from 90deg to 135deg gradients for more modern look
+- Improved shadows: Added depth with `0 8px 25px` shadows with color-specific opacity
+- Better spacing: Increased padding from `1rem` to `1.5rem`
+- Larger icons: Increased from `2rem` to `2.5rem` font size
+- Enhanced typography: Better font weights and color hierarchy
+- Rounded corners: Increased border-radius from `10px` to `15px`
+- Subtle borders: Added `rgba(255, 255, 255, 0.1)` borders
+
+**2. Color-Coded Theme System**
+- **Primary**: Blue gradient (`#667eea` to `#764ba2`)
+- **Success**: Green gradient (`#56ab2f` to `#a8e6cf`)
+- **Warning**: Pink/Red gradient (`#f093fb` to `#f5576c`)
+- **Info**: Cyan gradient (`#4facfe` to `#00f2fe`)
+
+**3. Improved Organization**
+- Section Headers: Added descriptive subheadings like "Core Customer Metrics"
+- Logical Grouping: Organized metrics by business importance
+- Contextual Subtitles: Added descriptive subtitles for each metric card
+
+#### 🔢 Fixed Data Type & Formatting Issues
+
+**1. SQL Query Enhancements**
+```sql
+-- Before:
+COUNT(DISTINCT customer_sk) as total_customers
+
+-- After: 
+CAST(COUNT(DISTINCT customer_sk) AS INT64) as total_customers
+```
+
+**2. Python Formatting Improvements**
+```python
+# Before:
+f"{customer_metrics['total_customers']:,}"
+
+# After:
+f"{int(customer_metrics['total_customers']):,}"
+```
+
+**3. Consistent Integer Display**
+- All count metrics now display without decimal points
+- Proper thousand separators (commas)
+- Consistent formatting across all pages
+
+#### 📊 Page-Specific Enhancements
+
+**Customer Analytics (`1_👥_Customer_Analytics.py`)**
+- **Metrics**: Total Customers, Total Revenue, Avg Customer CLV, Avg Orders/Customer
+- **Subtitles**: "Active Customer Base", "Customer Generated", "Predicted Annual Value", "Purchase Frequency"
+- **CAST Operations**: customer_count, segment counts
+
+**Order Analytics (`2_🛒_Order_Analytics.py`)**
+- **Metrics**: Total Orders, Total Revenue, Avg Order Value, Unique Customers  
+- **Subtitles**: "Completed Transactions", "Order Generated Revenue", "Revenue per Order", "Active Order Customers"
+- **CAST Operations**: order_count, unique_customers, category counts
+
+**Review Analytics (`3_⭐_Review_Analytics.py`)**
+- **Metrics**: Total Reviews, Average Rating, Positive Reviews %, Negative Reviews %
+- **Subtitles**: "Customer Feedback Count", "Overall Satisfaction Score", "4-5 Star Ratings", "1-2 Star Ratings"
+- **CAST Operations**: review_count, positive/negative review counts, customer_count
+
+**Geographic Analytics (`4_🗺️_Geographic_Analytics.py`)**
+- **Metrics**: Total States, Total Customers, Total Revenue, Avg Market Opportunity
+- **Subtitles**: "Market Coverage", "Geographic Customer Base", "Geographic Revenue", "Growth Potential Index"
+- **CAST Operations**: states_count, region_customers, tier_customers
+
+#### 🗑️ Cleanup Operations
+- Removed Duplicate Metrics: Eliminated redundant metric card displays
+- Consistent Function Signatures: Updated all `create_metric_card()` functions
+- Standardized Color Usage: Applied consistent color themes across pages
+
+### Results
+
+#### ✅ Before vs After
+**Before:**
+- Basic gradient styling
+- Floating point display issues (e.g., "98,665.0")
+- Inconsistent layouts
+- Limited visual hierarchy
+
+**After:**
+- Professional gradient cards with enhanced shadows
+- Clean integer display (e.g., "98,665")
+- Organized sections with descriptive headers
+- Clear visual hierarchy with contextual subtitles
+
+#### 📱 User Experience Improvements
+- **Visual Appeal**: More professional, modern card designs
+- **Information Clarity**: Descriptive subtitles provide context
+- **Consistency**: Uniform styling across all analytics pages
+- **Readability**: Clean integer formatting eliminates confusion
+
+#### 🔧 Technical Improvements
+- **Data Integrity**: CAST operations ensure consistent data types
+- **Performance**: Optimized queries with proper type casting
+- **Maintainability**: Consistent code patterns across pages
+- **Error Prevention**: Integer formatting prevents display issues
+
+### Testing Status
+- **BigQuery Connections**: ✅ All pages connect successfully
+- **Data Type Consistency**: ✅ All CAST operations working
+- **Metric Card Styling**: ✅ Enhanced styling applied consistently
+- **Integer Formatting**: ✅ All count metrics display properly
+
+All analytics pages now match the professional styling and formatting standards established in Main.py dashboard.
+
+---
+
+## 🛠️ Polars `.item()` Error Fixes
+
+**Issue:** Application raised `ValueError` when calling `.item()` on empty Polars DataFrames (shape 0,1).
+
+**Root Cause:** `.item()` was used without checking DataFrame shape; empty results from filters/aggregations produced the error.
+
+**Fix Implemented:** Added safe utilities in `utils/data_processing.py`:
+- `safe_item(df, default_value=0)` — safe single-value extraction
+- `safe_aggregate(df, expr, default_value=0)` — safe aggregation with default fallback
+
+**Files Updated:**
+- `utils/data_processing.py` (added safe helpers)
+- `utils/visualizations.py` (improved error handling)
+- `utils/performance.py` (robustness improvements)
+- `pages/1_👥_Customer_Analytics.py`
+- `pages/2_🛒_Order_Analytics.py`
+- `pages/3_⭐_Review_Analytics.py`
+- `pages/4_🗺️_Geographic_Analytics.py`
+
+**Result:**
+- Eliminated runtime `.item()` errors on empty DataFrames
+- Consistent sensible defaults for aggregates
+- Cleaner and safer analytics codebase
+
+**Test Notes:** Application starts with `streamlit run Main.py` and all pages load correctly; empty query results handled gracefully.

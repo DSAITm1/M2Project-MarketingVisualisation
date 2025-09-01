@@ -15,6 +15,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
 from utils.database import get_bigquery_client
+from utils.data_processing import safe_aggregate
 
 st.set_page_config(page_title="Customer Analytics", page_icon="👥", layout="wide")
 
@@ -55,7 +56,7 @@ def get_customer_analytics_data():
         segment_query = """
         SELECT 
             customer_segment,
-            COUNT(*) as customer_count,
+            CAST(COUNT(*) AS INT64) as customer_count,
             ROUND(SUM(total_spent), 2) as segment_revenue,
             ROUND(AVG(total_spent), 2) as avg_customer_value,
             ROUND(AVG(avg_order_value), 2) as avg_order_value,
@@ -73,7 +74,7 @@ def get_customer_analytics_data():
         geo_query = """
         SELECT 
             customer_state,
-            COUNT(*) as customer_count,
+            CAST(COUNT(*) AS INT64) as customer_count,
             ROUND(SUM(total_spent), 2) as state_revenue,
             ROUND(AVG(total_spent), 2) as avg_customer_value
         FROM `project-olist-470307.dbt_olist_analytics.customer_analytics_obt`
@@ -96,28 +97,54 @@ def get_customer_analytics_data():
         st.error(f"Error loading customer analytics: {str(e)}")
         return None
 
-def create_metric_card(title, value, icon, color="blue"):
-    """Create a colored metric card"""
-    colors = {
-        "blue": "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-        "green": "linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%)",
-        "orange": "linear-gradient(90deg, #f093fb 0%, #f5576c 100%)",
-        "purple": "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"
+def create_metric_card(title, value, icon, color="primary", subtitle=""):
+    """Create a metric card with enhanced styling"""
+    color_schemes = {
+        "primary": {
+            "bg": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            "shadow": "0 8px 25px rgba(102, 126, 234, 0.3)"
+        },
+        "success": {
+            "bg": "linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%)",
+            "shadow": "0 8px 25px rgba(86, 171, 47, 0.3)"
+        },
+        "warning": {
+            "bg": "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+            "shadow": "0 8px 25px rgba(240, 147, 251, 0.3)"
+        },
+        "info": {
+            "bg": "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            "shadow": "0 8px 25px rgba(79, 172, 254, 0.3)"
+        }
     }
+    
+    selected_color = color_schemes.get(color, color_schemes["primary"])
     
     return f"""
     <div style="
-        background: {colors[color]};
-        padding: 1rem;
-        border-radius: 10px;
+        background: {selected_color['bg']};
+        padding: 1.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: {selected_color['shadow']};
+        transition: transform 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     ">
-        <h3 style="margin: 0; font-size: 2rem;">{icon}</h3>
-        <h4 style="margin: 0.5rem 0; color: #f0f0f0;">{title}</h4>
-        <h2 style="margin: 0; font-size: 1.8rem;">{value}</h2>
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">{icon}</div>
+        <div style="
+            font-size: 0.9rem; 
+            color: rgba(255, 255, 255, 0.8); 
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        ">{title}</div>
+        <div style="
+            font-size: 2rem; 
+            font-weight: bold; 
+            margin-bottom: 0.2rem;
+        ">{value}</div>
+        {f'<div style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.7);">{subtitle}</div>' if subtitle else ''}
     </div>
     """
 
@@ -140,20 +167,22 @@ def main():
     
     # Overall Customer Metrics
     st.header("📊 Customer Portfolio Overview")
+    st.markdown("### Core Customer Metrics")
     
     total_customers = customer_data.height
-    total_revenue = customer_data.select(pl.sum("total_spent")).item()
-    avg_clv = customer_data.select(pl.mean("predicted_annual_clv")).item()
-    avg_orders = customer_data.select(pl.mean("total_orders")).item()
+    total_revenue = safe_aggregate(customer_data, pl.sum("total_spent"))
+    avg_clv = safe_aggregate(customer_data, pl.mean("predicted_annual_clv"))
+    avg_orders = safe_aggregate(customer_data, pl.mean("total_orders"))
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.markdown(create_metric_card(
             "Total Customers", 
-            f"{total_customers:,}", 
+            f"{int(total_customers):,}", 
             "👥",
-            "blue"
+            "primary",
+            "Active Customer Base"
         ), unsafe_allow_html=True)
     
     with col2:
@@ -161,15 +190,17 @@ def main():
             "Total Revenue", 
             f"${total_revenue:,.0f}", 
             "💰",
-            "green"
+            "success",
+            "Customer Generated"
         ), unsafe_allow_html=True)
     
     with col3:
         st.markdown(create_metric_card(
             "Avg Customer CLV", 
-            f"${avg_clv:,.0f}", 
-            "🎯",
-            "orange"
+            f"${avg_clv:.0f}", 
+            "📈",
+            "warning",
+            "Predicted Annual Value"
         ), unsafe_allow_html=True)
     
     with col4:
@@ -177,7 +208,8 @@ def main():
             "Avg Orders/Customer", 
             f"{avg_orders:.1f}", 
             "🛒",
-            "purple"
+            "info",
+            "Purchase Frequency"
         ), unsafe_allow_html=True)
     
     # Customer Segmentation Analysis
@@ -300,56 +332,13 @@ def main():
             fig_scatter.update_layout(height=400)
             st.plotly_chart(fig_scatter, width="stretch")
     
-    # Marketing Insights and Recommendations
-    st.header("💡 Marketing Strategy Insights")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        **🎯 Customer Acquisition Strategy**
-        
-        • **Focus on High-Value States**: Target advertising in top-performing states
-        
-        • **Segment-Specific Campaigns**: Tailor messaging for each customer segment
-        
-        • **Lookalike Targeting**: Find customers similar to VIP segment profiles
-        
-        • **Geographic Expansion**: Explore underrepresented high-opportunity areas
-        """)
-    
-    with col2:
-        st.markdown("""
-        **💰 Revenue Optimization**
-        
-        • **VIP Customer Retention**: Implement loyalty programs for top spenders
-        
-        • **Cross-selling Opportunities**: Increase order frequency in existing segments
-        
-        • **CLV Maximization**: Focus on customers with high predicted lifetime value
-        
-        • **Segment Migration**: Help lower-tier customers move up segments
-        """)
-    
-    with col3:
-        st.markdown("""
-        **📊 Actionable Next Steps**
-        
-        • **Personalized Campaigns**: Create segment-specific email campaigns
-        
-        • **Regional Marketing**: Allocate budget based on state performance
-        
-        • **Customer Journey Optimization**: Improve experience for each segment
-        
-        • **Predictive Targeting**: Use CLV models for customer acquisition
-        """)
-    
     # Quick Stats Summary
     if not segment_data.is_empty():
         st.header("📋 Key Performance Indicators")
         
         # Calculate some KPIs
-        vip_customers = segment_data.filter(pl.col("customer_segment").str.contains("VIP|High")).select(pl.sum("customer_count")).item() if not segment_data.is_empty() else 0
+        vip_filter = segment_data.filter(pl.col("customer_segment").str.contains("VIP|High")) if not segment_data.is_empty() else pl.DataFrame()
+        vip_customers = safe_aggregate(vip_filter, pl.sum("customer_count"))
         vip_percentage = (vip_customers / total_customers * 100) if total_customers > 0 else 0
         
         col1, col2, col3, col4 = st.columns(4)
@@ -362,7 +351,7 @@ def main():
             st.metric("Avg Customer Value", f"${avg_customer_value:.2f}", "Growing")
         
         with col3:
-            top_state_revenue = geo_data.select(pl.max("state_revenue")).item() if not geo_data.is_empty() else 0
+            top_state_revenue = safe_aggregate(geo_data, pl.max("state_revenue"))
             st.metric("Top State Revenue", f"${top_state_revenue:,.0f}", "São Paulo leader")
         
         with col4:

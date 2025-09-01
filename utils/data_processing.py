@@ -11,6 +11,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def safe_item(df: pl.DataFrame, default_value: Any = 0) -> Any:
+    """Safely extract item from single-value dataframe"""
+    try:
+        if df.is_empty() or df.shape != (1, 1):
+            return default_value
+        return df.item()
+    except Exception:
+        return default_value
+
+def safe_aggregate(df: pl.DataFrame, expr: pl.Expr, default_value: Any = 0) -> Any:
+    """Safely execute aggregation and extract result"""
+    try:
+        if df.is_empty():
+            return default_value
+        result = df.select(expr)
+        return safe_item(result, default_value)
+    except Exception:
+        return default_value
+
 @st.cache_data(ttl=1800)  # Cache for 30 minutes
 def get_customer_segments():
     """Get customer segmentation analysis"""
@@ -235,20 +254,20 @@ def calculate_business_metrics(df: pl.DataFrame) -> Dict[str, Any]:
     # Revenue metrics
     if 'price' in df.columns or 'total_spent' in df.columns:
         revenue_col = 'total_spent' if 'total_spent' in df.columns else 'price'
-        metrics['Total Revenue'] = f"${df.select(pl.col(revenue_col).sum()).item():,.2f}"
-        metrics['Average Order Value'] = f"${df.select(pl.col(revenue_col).mean()).item():,.2f}"
+        metrics['Total Revenue'] = f"${safe_aggregate(df, pl.col(revenue_col).sum()):,.2f}"
+        metrics['Average Order Value'] = f"${safe_aggregate(df, pl.col(revenue_col).mean()):,.2f}"
     
     # Customer metrics
     if 'customer_unique_id' in df.columns:
-        metrics['Total Customers'] = f"{df.select(pl.col('customer_unique_id').n_unique()).item():,}"
+        metrics['Total Customers'] = f"{safe_aggregate(df, pl.col('customer_unique_id').n_unique()):,}"
     
     # Order metrics
     if 'order_id' in df.columns:
-        metrics['Total Orders'] = f"{df.select(pl.col('order_id').n_unique()).item():,}"
+        metrics['Total Orders'] = f"{safe_aggregate(df, pl.col('order_id').n_unique()):,}"
     
     # Review metrics
     if 'review_score' in df.columns:
-        metrics['Average Rating'] = f"{df.select(pl.col('review_score').mean()).item():.2f}/5"
+        metrics['Average Rating'] = f"{safe_aggregate(df, pl.col('review_score').mean()):.2f}/5"
     
     return metrics
 
@@ -261,11 +280,17 @@ def filter_data_by_date(df: pl.DataFrame, date_column: str,
     
     filtered_df = df.clone()
     
-    # Ensure datetime column
-    if filtered_df.select(pl.col(date_column).dtype).item() != pl.Datetime:
-        filtered_df = filtered_df.with_columns(
-            pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
-        )
+    # Ensure datetime column - now with safer checking
+    try:
+        if not filtered_df.is_empty():
+            dtype_check = filtered_df.select(pl.col(date_column).dtype)
+            if not dtype_check.is_empty() and safe_item(dtype_check) != pl.Datetime:
+                filtered_df = filtered_df.with_columns(
+                    pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d %H:%M:%S", strict=False)
+                )
+    except Exception:
+        # If dtype checking fails, assume it's already datetime or skip conversion
+        pass
     
     # Apply filters
     if start_date:

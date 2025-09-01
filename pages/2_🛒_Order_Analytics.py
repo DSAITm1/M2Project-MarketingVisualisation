@@ -16,6 +16,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
 from utils.database import get_bigquery_client
+from utils.data_processing import safe_aggregate, safe_item
 
 st.set_page_config(page_title="Order Analytics", page_icon="🛒", layout="wide")
 
@@ -55,7 +56,6 @@ def get_order_analytics_data():
         LIMIT 50000
         """
         
-        st.info("Loading order data...")
         order_result = client.query(order_query).result()
         order_data = pl.from_pandas(order_result.to_dataframe())
         
@@ -67,17 +67,16 @@ def get_order_analytics_data():
         monthly_query = """
         SELECT 
             year_month,
-            COUNT(DISTINCT order_id) as order_count,
+            CAST(COUNT(DISTINCT order_id) AS INT64) as order_count,
             ROUND(SUM(allocated_payment), 2) as total_revenue,
             ROUND(AVG(allocated_payment), 2) as avg_order_value,
-            COUNT(DISTINCT customer_id) as unique_customers
+            CAST(COUNT(DISTINCT customer_id) AS INT64) as unique_customers
         FROM `project-olist-470307.dbt_olist_analytics.revenue_analytics_obt`
         WHERE order_status IN ('delivered', 'shipped', 'invoiced', 'processing')
         GROUP BY year_month
         ORDER BY year_month
         """
         
-        st.info("Loading monthly trends...")
         monthly_result = client.query(monthly_query).result()
         monthly_data = pl.from_pandas(monthly_result.to_dataframe())
         
@@ -85,7 +84,7 @@ def get_order_analytics_data():
         category_query = """
         SELECT 
             product_category_english as product_category_name,
-            COUNT(DISTINCT order_id) as order_count,
+            CAST(COUNT(DISTINCT order_id) AS INT64) as order_count,
             ROUND(SUM(allocated_payment), 2) as category_revenue,
             ROUND(AVG(allocated_payment), 2) as avg_order_value,
             ROUND(AVG(review_score), 2) as avg_review_score
@@ -96,7 +95,6 @@ def get_order_analytics_data():
         LIMIT 15
         """
         
-        st.info("Loading category performance...")
         category_result = client.query(category_query).result()
         category_data = pl.from_pandas(category_result.to_dataframe())
         
@@ -104,7 +102,7 @@ def get_order_analytics_data():
         delivery_query = """
         SELECT 
             satisfaction_level as delivery_performance,
-            COUNT(DISTINCT order_id) as order_count,
+            CAST(COUNT(DISTINCT order_id) AS INT64) as order_count,
             ROUND(AVG(review_score), 2) as avg_review_score,
             ROUND(COUNT(DISTINCT order_id) * 100.0 / SUM(COUNT(DISTINCT order_id)) OVER(), 2) as percentage
         FROM `project-olist-470307.dbt_olist_analytics.revenue_analytics_obt`
@@ -113,11 +111,8 @@ def get_order_analytics_data():
         ORDER BY order_count DESC
         """
         
-        st.info("Loading delivery performance...")
         delivery_result = client.query(delivery_query).result()
         delivery_data = pl.from_pandas(delivery_result.to_dataframe())
-        
-        st.success("All data loaded successfully!")
         
         return {
             'order_data': order_data,
@@ -130,28 +125,54 @@ def get_order_analytics_data():
         st.error(f"Error loading order analytics: {str(e)}")
         return None
 
-def create_metric_card(title, value, icon, color="blue"):
-    """Create a colored metric card"""
-    colors = {
-        "blue": "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-        "green": "linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%)",
-        "orange": "linear-gradient(90deg, #f093fb 0%, #f5576c 100%)",
-        "purple": "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"
+def create_metric_card(title, value, icon, color="primary", subtitle=""):
+    """Create a metric card with enhanced styling"""
+    color_schemes = {
+        "primary": {
+            "bg": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            "shadow": "0 8px 25px rgba(102, 126, 234, 0.3)"
+        },
+        "success": {
+            "bg": "linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%)",
+            "shadow": "0 8px 25px rgba(86, 171, 47, 0.3)"
+        },
+        "warning": {
+            "bg": "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+            "shadow": "0 8px 25px rgba(240, 147, 251, 0.3)"
+        },
+        "info": {
+            "bg": "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            "shadow": "0 8px 25px rgba(79, 172, 254, 0.3)"
+        }
     }
+    
+    selected_color = color_schemes.get(color, color_schemes["primary"])
     
     return f"""
     <div style="
-        background: {colors[color]};
-        padding: 1rem;
-        border-radius: 10px;
+        background: {selected_color['bg']};
+        padding: 1.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: {selected_color['shadow']};
+        transition: transform 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     ">
-        <h3 style="margin: 0; font-size: 2rem;">{icon}</h3>
-        <h4 style="margin: 0.5rem 0; color: #f0f0f0;">{title}</h4>
-        <h2 style="margin: 0; font-size: 1.8rem;">{value}</h2>
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">{icon}</div>
+        <div style="
+            font-size: 0.9rem; 
+            color: rgba(255, 255, 255, 0.8); 
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        ">{title}</div>
+        <div style="
+            font-size: 2rem; 
+            font-weight: bold; 
+            margin-bottom: 0.2rem;
+        ">{value}</div>
+        {f'<div style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.7);">{subtitle}</div>' if subtitle else ''}
     </div>
     """
 
@@ -181,21 +202,23 @@ def main():
     
     # Overall Order Metrics
     st.header("📊 Order Performance Overview")
+    st.markdown("### Core Order Metrics")
     
     if not order_data.is_empty():
-        total_orders = order_data.select(pl.n_unique("order_id")).item()
-        total_revenue = order_data.select(pl.sum("payment_value")).item()
-        avg_order_value = order_data.select(pl.mean("payment_value")).item()
-        unique_customers = order_data.select(pl.n_unique("customer_id")).item()
+        total_orders = safe_aggregate(order_data, pl.n_unique("order_id"))
+        total_revenue = safe_aggregate(order_data, pl.sum("payment_value"))
+        avg_order_value = safe_aggregate(order_data, pl.mean("payment_value"))
+        unique_customers = safe_aggregate(order_data, pl.n_unique("customer_id"))
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.markdown(create_metric_card(
                 "Total Orders", 
-                f"{total_orders:,}", 
+                f"{int(total_orders):,}", 
                 "🛒",
-                "blue"
+                "primary",
+                "Completed Transactions"
             ), unsafe_allow_html=True)
         
         with col2:
@@ -203,7 +226,8 @@ def main():
                 "Total Revenue", 
                 f"${total_revenue:,.0f}", 
                 "💰",
-                "green"
+                "success",
+                "Order Generated Revenue"
             ), unsafe_allow_html=True)
         
         with col3:
@@ -211,15 +235,17 @@ def main():
                 "Avg Order Value", 
                 f"${avg_order_value:.2f}", 
                 "📈",
-                "orange"
+                "warning",
+                "Revenue per Order"
             ), unsafe_allow_html=True)
         
         with col4:
             st.markdown(create_metric_card(
                 "Unique Customers", 
-                f"{unique_customers:,}", 
+                f"{int(unique_customers):,}", 
                 "👥",
-                "purple"
+                "info",
+                "Active Order Customers"
             ), unsafe_allow_html=True)
     
     # Monthly Trends Analysis
@@ -430,50 +456,6 @@ def main():
             fig_state_orders.update_layout(height=400)
             st.plotly_chart(fig_state_orders, use_container_width=True)
     
-    # Marketing Insights and Recommendations
-    st.header("💡 Strategic Order Insights")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        **📈 Growth Opportunities**
-        
-        • **Peak Season Planning**: Optimize inventory for high-demand periods
-        
-        • **Category Expansion**: Focus on top-performing product categories
-        
-        • **Regional Targeting**: Expand in high-performing geographic areas
-        
-        • **Payment Optimization**: Promote preferred payment methods
-        """)
-    
-    with col2:
-        st.markdown("""
-        **🚚 Operational Excellence**
-        
-        • **Delivery Optimization**: Improve delivery performance metrics
-        
-        • **Inventory Management**: Stock popular categories efficiently
-        
-        • **Seller Network**: Strengthen partnerships in key states
-        
-        • **Customer Experience**: Focus on delivery time improvements
-        """)
-    
-    with col3:
-        st.markdown("""
-        **💰 Revenue Optimization**
-        
-        • **Pricing Strategy**: Optimize pricing for better margins
-        
-        • **Cross-selling**: Bundle products from top categories
-        
-        • **Customer Retention**: Focus on repeat purchase behavior
-        
-        • **Market Expansion**: Target underperforming regions
-        """)
-    
     # Quick Order Insights
     if not monthly_data.is_empty() and not category_data.is_empty():
         st.header("📋 Key Order Insights")
@@ -481,11 +463,11 @@ def main():
         # Calculate insights
         recent_growth = 0
         if monthly_data.height >= 2:
-            latest_revenue = monthly_data.tail(1).select("total_revenue").item()
-            previous_revenue = monthly_data.tail(2).head(1).select("total_revenue").item()
+            latest_revenue = safe_item(monthly_data.tail(1).select("total_revenue"))
+            previous_revenue = safe_item(monthly_data.tail(2).head(1).select("total_revenue"))
             recent_growth = ((latest_revenue - previous_revenue) / previous_revenue * 100) if previous_revenue > 0 else 0
         
-        top_category = category_data.head(1).select("product_category_name").item() if not category_data.is_empty() else "N/A"
+        top_category = safe_item(category_data.head(1).select("product_category_name"), "N/A")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -496,11 +478,12 @@ def main():
             st.metric("Top Category", top_category, "By revenue")
         
         with col3:
-            delivery_rate = delivery_data.filter(pl.col("delivery_performance") == "high").select("percentage").item() if not delivery_data.is_empty() else 0
+            delivery_filter = delivery_data.filter(pl.col("delivery_performance") == "high") if not delivery_data.is_empty() else pl.DataFrame()
+            delivery_rate = safe_aggregate(delivery_filter, pl.col("percentage"))
             st.metric("High Satisfaction", f"{delivery_rate:.1f}%", "Performance")
         
         with col4:
-            avg_installments = order_data.select(pl.mean("payment_installments")).item() if not order_data.is_empty() else 0
+            avg_installments = safe_aggregate(order_data, pl.mean("payment_installments"))
             st.metric("Avg Installments", f"{avg_installments:.1f}", "Payment flexibility")
     
     # Footer

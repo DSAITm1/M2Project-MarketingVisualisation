@@ -15,6 +15,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
 from utils.database import get_bigquery_client
+from utils.data_processing import safe_aggregate, safe_item
 
 st.set_page_config(page_title="Geographic Analytics", page_icon="🗺️", layout="wide")
 
@@ -52,9 +53,9 @@ def get_geographic_analytics_data():
         regional_query = """
         SELECT 
             geographic_region,
-            COUNT(DISTINCT state_code) as states_count,
-            SUM(total_customers) as region_customers,
-            SUM(total_orders) as region_orders,
+            CAST(COUNT(DISTINCT state_code) AS INT64) as states_count,
+            CAST(SUM(total_customers) AS INT64) as region_customers,
+            CAST(SUM(total_orders) AS INT64) as region_orders,
             ROUND(SUM(total_revenue), 2) as region_revenue,
             ROUND(AVG(average_order_value), 2) as avg_order_value,
             ROUND(AVG(avg_review_score), 2) as avg_review_score
@@ -70,9 +71,9 @@ def get_geographic_analytics_data():
         tier_query = """
         SELECT 
             market_tier,
-            COUNT(DISTINCT state_code) as states_count,
-            SUM(total_customers) as tier_customers,
-            SUM(total_orders) as tier_orders,
+            CAST(COUNT(DISTINCT state_code) AS INT64) as states_count,
+            CAST(SUM(total_customers) AS INT64) as tier_customers,
+            CAST(SUM(total_orders) AS INT64) as tier_orders,
             ROUND(SUM(total_revenue), 2) as tier_revenue,
             ROUND(AVG(market_opportunity_index), 2) as avg_opportunity_index
         FROM `project-olist-470307.dbt_olist_analytics.geographic_analytics_obt`
@@ -94,28 +95,54 @@ def get_geographic_analytics_data():
         st.error(f"Error loading geographic analytics: {str(e)}")
         return None
 
-def create_metric_card(title, value, icon, color="blue"):
-    """Create a colored metric card"""
-    colors = {
-        "blue": "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-        "green": "linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%)",
-        "orange": "linear-gradient(90deg, #f093fb 0%, #f5576c 100%)",
-        "purple": "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"
+def create_metric_card(title, value, icon, color="primary", subtitle=""):
+    """Create a metric card with enhanced styling"""
+    color_schemes = {
+        "primary": {
+            "bg": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            "shadow": "0 8px 25px rgba(102, 126, 234, 0.3)"
+        },
+        "success": {
+            "bg": "linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%)",
+            "shadow": "0 8px 25px rgba(86, 171, 47, 0.3)"
+        },
+        "warning": {
+            "bg": "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+            "shadow": "0 8px 25px rgba(240, 147, 251, 0.3)"
+        },
+        "info": {
+            "bg": "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            "shadow": "0 8px 25px rgba(79, 172, 254, 0.3)"
+        }
     }
+    
+    selected_color = color_schemes.get(color, color_schemes["primary"])
     
     return f"""
     <div style="
-        background: {colors[color]};
-        padding: 1rem;
-        border-radius: 10px;
+        background: {selected_color['bg']};
+        padding: 1.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: {selected_color['shadow']};
+        transition: transform 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     ">
-        <h3 style="margin: 0; font-size: 2rem;">{icon}</h3>
-        <h4 style="margin: 0.5rem 0; color: #f0f0f0;">{title}</h4>
-        <h2 style="margin: 0; font-size: 1.8rem;">{value}</h2>
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">{icon}</div>
+        <div style="
+            font-size: 0.9rem; 
+            color: rgba(255, 255, 255, 0.8); 
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        ">{title}</div>
+        <div style="
+            font-size: 2rem; 
+            font-weight: bold; 
+            margin-bottom: 0.2rem;
+        ">{value}</div>
+        {f'<div style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.7);">{subtitle}</div>' if subtitle else ''}
     </div>
     """
 
@@ -138,29 +165,32 @@ def main():
     
     # Overall Geographic Metrics
     st.header("📊 Geographic Market Overview")
+    st.markdown("### Core Geographic Metrics")
     
     if not overview_data.is_empty():
         total_states = overview_data.height
-        total_customers = overview_data.select(pl.sum("total_customers")).item()
-        total_revenue = overview_data.select(pl.sum("total_revenue")).item()
-        avg_opportunity = overview_data.select(pl.mean("market_opportunity_index")).item()
+        total_customers = safe_aggregate(overview_data, pl.sum("total_customers"))
+        total_revenue = safe_aggregate(overview_data, pl.sum("total_revenue"))
+        avg_opportunity = safe_aggregate(overview_data, pl.mean("market_opportunity_index"))
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.markdown(create_metric_card(
-                "States Covered", 
-                f"{total_states}", 
+                "Total States", 
+                f"{int(total_states)}", 
                 "🗺️",
-                "blue"
+                "primary",
+                "Market Coverage"
             ), unsafe_allow_html=True)
         
         with col2:
             st.markdown(create_metric_card(
                 "Total Customers", 
-                f"{total_customers:,}", 
+                f"{int(total_customers):,}", 
                 "👥",
-                "green"
+                "success",
+                "Geographic Customer Base"
             ), unsafe_allow_html=True)
         
         with col3:
@@ -168,15 +198,17 @@ def main():
                 "Total Revenue", 
                 f"${total_revenue:,.0f}", 
                 "💰",
-                "orange"
+                "warning",
+                "Geographic Revenue"
             ), unsafe_allow_html=True)
         
         with col4:
             st.markdown(create_metric_card(
-                "Avg Opportunity Index", 
+                "Avg Market Opportunity", 
                 f"{avg_opportunity:.2f}", 
-                "📈",
-                "purple"
+                "🎯",
+                "info",
+                "Growth Potential Index"
             ), unsafe_allow_html=True)
     
     # Regional Analysis
@@ -360,50 +392,6 @@ def main():
             fig_city_density.update_layout(height=500)
             st.plotly_chart(fig_city_density, width="stretch")
     
-    # Marketing Strategy Insights
-    st.header("💡 Geographic Marketing Strategy")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        **🎯 Market Expansion**
-        
-        • **High-Tier Markets**: Focus advertising spend on Tier 1 markets
-        
-        • **Opportunity Markets**: Target states with high opportunity index
-        
-        • **Regional Strategy**: Customize campaigns by geographic region
-        
-        • **Untapped Potential**: Identify underperforming high-opportunity areas
-        """)
-    
-    with col2:
-        st.markdown("""
-        **📊 Resource Allocation**
-        
-        • **Revenue Concentration**: Prioritize top-performing states
-        
-        • **Customer Density**: Optimize logistics in high-density areas
-        
-        • **Market Penetration**: Increase presence in growing markets
-        
-        • **Competitive Positioning**: Strengthen position in key regions
-        """)
-    
-    with col3:
-        st.markdown("""
-        **🚀 Growth Opportunities**
-        
-        • **Emerging Markets**: Invest in Tier 2 and Tier 3 development
-        
-        • **Regional Partnerships**: Build local partnerships for market entry
-        
-        • **Customer Acquisition**: Target specific geographic segments
-        
-        • **Market Development**: Create region-specific value propositions
-        """)
-    
     # Regional Performance Comparison
     if not regional_data.is_empty():
         st.header("📈 Regional Performance Comparison")
@@ -424,11 +412,11 @@ def main():
         st.header("📋 Key Geographic KPIs")
         
         # Calculate insights
-        top_state = overview_data.head(1).select("state_name").item() if not overview_data.is_empty() else "N/A"
+        top_state = safe_item(overview_data.head(1).select("state_name"), "N/A")
         
         # Fix the issue with empty dataframes
         high_tier_filter = tier_data.filter(pl.col("market_tier") == "High Tier") if not tier_data.is_empty() else pl.DataFrame()
-        high_tier_states = high_tier_filter.select("states_count").item() if not high_tier_filter.is_empty() else 0
+        high_tier_states = safe_aggregate(high_tier_filter, pl.col("states_count"))
         
         col1, col2, col3, col4 = st.columns(4)
         

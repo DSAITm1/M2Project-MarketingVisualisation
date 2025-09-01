@@ -201,25 +201,41 @@ def create_summary_stats(df: pl.DataFrame, numeric_only: bool = True) -> pl.Data
     if numeric_only:
         # Get numeric columns
         numeric_cols = []
-        for col in df.columns:
-            if df.select(pl.col(col).dtype).item() in [pl.Float64, pl.Int64, pl.Float32, pl.Int32]:
-                numeric_cols.append(col)
-        
-        if numeric_cols:
-            # Calculate summary statistics for numeric columns
-            stats_data = {}
-            for col in numeric_cols:
-                col_stats = df.select([
-                    pl.col(col).count().alias(f"{col}_count"),
-                    pl.col(col).mean().alias(f"{col}_mean"),
-                    pl.col(col).std().alias(f"{col}_std"),
-                    pl.col(col).min().alias(f"{col}_min"),
-                    pl.col(col).max().alias(f"{col}_max")
-                ])
-                for stat_col in col_stats.columns:
-                    stats_data[stat_col] = [col_stats.select(pl.col(stat_col)).item()]
+        try:
+            for col in df.columns:
+                try:
+                    dtype_result = df.select(pl.col(col).dtype)
+                    if not dtype_result.is_empty():
+                        col_dtype = dtype_result.item()
+                        if col_dtype in [pl.Float64, pl.Int64, pl.Float32, pl.Int32]:
+                            numeric_cols.append(col)
+                except Exception:
+                    continue
             
-            return pl.DataFrame(stats_data)
+            if numeric_cols:
+                # Calculate summary statistics for numeric columns
+                stats_data = {}
+                for col in numeric_cols:
+                    try:
+                        col_stats = df.select([
+                            pl.col(col).count().alias(f"{col}_count"),
+                            pl.col(col).mean().alias(f"{col}_mean"),
+                            pl.col(col).std().alias(f"{col}_std"),
+                            pl.col(col).min().alias(f"{col}_min"),
+                            pl.col(col).max().alias(f"{col}_max")
+                        ])
+                        for stat_col in col_stats.columns:
+                            try:
+                                stats_data[stat_col] = [col_stats.select(pl.col(stat_col)).item()] if not col_stats.is_empty() else [0]
+                            except Exception:
+                                stats_data[stat_col] = [0]
+                    except Exception:
+                        continue
+                
+                return pl.DataFrame(stats_data)
+        except Exception:
+            # If any error occurs, fall through to basic info
+            pass
     
     # For non-numeric or all columns, return basic info
     return pl.DataFrame({

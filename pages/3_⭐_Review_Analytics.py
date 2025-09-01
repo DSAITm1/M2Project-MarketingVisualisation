@@ -15,6 +15,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils'))
 
 from utils.database import get_bigquery_client
+from utils.data_processing import safe_aggregate, safe_item
 
 st.set_page_config(page_title="Review Analytics", page_icon="⭐", layout="wide")
 
@@ -51,10 +52,10 @@ def get_review_analytics_data():
         monthly_query = """
         SELECT 
             year_month,
-            COUNT(*) as review_count,
+            CAST(COUNT(*) AS INT64) as review_count,
             ROUND(AVG(review_score), 2) as avg_review_score,
-            COUNT(CASE WHEN review_score >= 4 THEN 1 END) as positive_reviews,
-            COUNT(CASE WHEN review_score <= 2 THEN 1 END) as negative_reviews
+            CAST(COUNT(CASE WHEN review_score >= 4 THEN 1 END) AS INT64) as positive_reviews,
+            CAST(COUNT(CASE WHEN review_score <= 2 THEN 1 END) AS INT64) as negative_reviews
         FROM `project-olist-470307.dbt_olist_analytics.revenue_analytics_obt`
         WHERE review_score IS NOT NULL
         GROUP BY year_month
@@ -68,10 +69,10 @@ def get_review_analytics_data():
         category_query = """
         SELECT 
             product_category_english as product_category_name,
-            COUNT(*) as review_count,
+            CAST(COUNT(*) AS INT64) as review_count,
             ROUND(AVG(review_score), 2) as avg_review_score,
-            COUNT(CASE WHEN review_score >= 4 THEN 1 END) as positive_reviews,
-            COUNT(CASE WHEN review_score <= 2 THEN 1 END) as negative_reviews,
+            CAST(COUNT(CASE WHEN review_score >= 4 THEN 1 END) AS INT64) as positive_reviews,
+            CAST(COUNT(CASE WHEN review_score <= 2 THEN 1 END) AS INT64) as negative_reviews,
             ROUND(AVG(allocated_payment), 2) as avg_order_value
         FROM `project-olist-470307.dbt_olist_analytics.revenue_analytics_obt`
         WHERE review_score IS NOT NULL AND product_category_english IS NOT NULL
@@ -87,7 +88,7 @@ def get_review_analytics_data():
         satisfaction_query = """
         SELECT 
             satisfaction_level as satisfaction_tier,
-            COUNT(DISTINCT customer_id) as customer_count,
+            CAST(COUNT(DISTINCT customer_id) AS INT64) as customer_count,
             ROUND(AVG(review_score), 2) as avg_review_score,
             ROUND(SUM(allocated_payment), 2) as total_revenue,
             ROUND(AVG(allocated_payment), 2) as avg_customer_value
@@ -111,28 +112,54 @@ def get_review_analytics_data():
         st.error(f"Error loading review analytics: {str(e)}")
         return None
 
-def create_metric_card(title, value, icon, color="blue"):
-    """Create a colored metric card"""
-    colors = {
-        "blue": "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-        "green": "linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%)",
-        "orange": "linear-gradient(90deg, #f093fb 0%, #f5576c 100%)",
-        "purple": "linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)"
+def create_metric_card(title, value, icon, color="primary", subtitle=""):
+    """Create a metric card with enhanced styling"""
+    color_schemes = {
+        "primary": {
+            "bg": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            "shadow": "0 8px 25px rgba(102, 126, 234, 0.3)"
+        },
+        "success": {
+            "bg": "linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%)",
+            "shadow": "0 8px 25px rgba(86, 171, 47, 0.3)"
+        },
+        "warning": {
+            "bg": "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+            "shadow": "0 8px 25px rgba(240, 147, 251, 0.3)"
+        },
+        "info": {
+            "bg": "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            "shadow": "0 8px 25px rgba(79, 172, 254, 0.3)"
+        }
     }
+    
+    selected_color = color_schemes.get(color, color_schemes["primary"])
     
     return f"""
     <div style="
-        background: {colors[color]};
-        padding: 1rem;
-        border-radius: 10px;
+        background: {selected_color['bg']};
+        padding: 1.5rem;
+        border-radius: 15px;
         color: white;
         text-align: center;
         margin: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: {selected_color['shadow']};
+        transition: transform 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     ">
-        <h3 style="margin: 0; font-size: 2rem;">{icon}</h3>
-        <h4 style="margin: 0.5rem 0; color: #f0f0f0;">{title}</h4>
-        <h2 style="margin: 0; font-size: 1.8rem;">{value}</h2>
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">{icon}</div>
+        <div style="
+            font-size: 0.9rem; 
+            color: rgba(255, 255, 255, 0.8); 
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        ">{title}</div>
+        <div style="
+            font-size: 2rem; 
+            font-weight: bold; 
+            margin-bottom: 0.2rem;
+        ">{value}</div>
+        {f'<div style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.7);">{subtitle}</div>' if subtitle else ''}
     </div>
     """
 
@@ -156,10 +183,11 @@ def main():
     
     # Overall Review Metrics
     st.header("📊 Review Performance Overview")
+    st.markdown("### Core Review Metrics")
     
     if not review_data.is_empty():
         total_reviews = review_data.height
-        avg_rating = review_data.select(pl.mean("review_score")).item()
+        avg_rating = safe_aggregate(review_data, pl.mean("review_score"))
         positive_reviews = review_data.filter(pl.col("review_score") >= 4).height
         negative_reviews = review_data.filter(pl.col("review_score") <= 2).height
         
@@ -168,9 +196,10 @@ def main():
         with col1:
             st.markdown(create_metric_card(
                 "Total Reviews", 
-                f"{total_reviews:,}", 
+                f"{int(total_reviews):,}", 
                 "⭐",
-                "blue"
+                "primary",
+                "Customer Feedback Count"
             ), unsafe_allow_html=True)
         
         with col2:
@@ -178,7 +207,8 @@ def main():
                 "Average Rating", 
                 f"{avg_rating:.2f}/5", 
                 "📊",
-                "green"
+                "success",
+                "Overall Satisfaction Score"
             ), unsafe_allow_html=True)
         
         with col3:
@@ -187,7 +217,8 @@ def main():
                 "Positive Reviews", 
                 f"{positive_rate:.1f}%", 
                 "👍",
-                "orange"
+                "warning",
+                "4-5 Star Ratings"
             ), unsafe_allow_html=True)
         
         with col4:
@@ -196,7 +227,8 @@ def main():
                 "Negative Reviews", 
                 f"{negative_rate:.1f}%", 
                 "👎",
-                "purple"
+                "info",
+                "1-2 Star Ratings"
             ), unsafe_allow_html=True)
     
     # Review Score Distribution
@@ -399,61 +431,14 @@ def main():
             fig_state_rating.update_layout(height=400)
             st.plotly_chart(fig_state_rating, width="stretch")
     
-    # Review Insights and Recommendations
-    st.header("💡 Review Strategy Insights")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        **📈 Satisfaction Improvement**
-        
-        • **Category Focus**: Improve low-rated product categories
-        
-        • **Customer Service**: Address negative review patterns
-        
-        • **Quality Control**: Monitor product quality issues
-        
-        • **Delivery Experience**: Enhance delivery satisfaction
-        """)
-    
-    with col2:
-        st.markdown("""
-        **🎯 Review Management**
-        
-        • **Positive Review Amplification**: Promote high-satisfaction customers
-        
-        • **Rapid Response**: Address negative reviews quickly
-        
-        • **Review Incentives**: Encourage satisfied customers to review
-        
-        • **Feedback Loop**: Use reviews for product improvement
-        """)
-    
-    with col3:
-        st.markdown("""
-        **💰 Revenue Impact**
-        
-        • **Satisfaction-Revenue Link**: Focus on high-value satisfied customers
-        
-        • **Category Optimization**: Invest in high-rated, profitable categories
-        
-        • **Customer Retention**: Use satisfaction data for retention strategies
-        
-        • **Pricing Strategy**: Align pricing with satisfaction levels
-        """)
-    
     # Review Performance Insights
     if not satisfaction_data.is_empty() and not category_data.is_empty():
         st.header("📋 Key Review Insights")
         
         # Calculate insights
-        top_category = category_data.head(1).select("product_category_name").item() if not category_data.is_empty() else "N/A"
-        high_satisfaction = satisfaction_data.filter(pl.col("satisfaction_tier").str.contains("High")).select("customer_count").sum() if not satisfaction_data.is_empty() else 0
-        
-        # Ensure high_satisfaction is a scalar value
-        if hasattr(high_satisfaction, 'item'):
-            high_satisfaction = high_satisfaction.item()
+        top_category = safe_item(category_data.head(1).select("product_category_name"), "N/A")
+        high_satisfaction_filter = satisfaction_data.filter(pl.col("satisfaction_tier").str.contains("High")) if not satisfaction_data.is_empty() else pl.DataFrame()
+        high_satisfaction = safe_aggregate(high_satisfaction_filter, pl.col("customer_count").sum())
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -468,7 +453,7 @@ def main():
             st.metric("High Satisfaction", f"{high_satisfaction:,}", "Customers")
         
         with col4:
-            avg_monthly_reviews = monthly_data.select(pl.mean("review_count")).item() if not monthly_data.is_empty() else 0
+            avg_monthly_reviews = safe_aggregate(monthly_data, pl.mean("review_count"))
             st.metric("Monthly Reviews", f"{avg_monthly_reviews:,.0f}", "Average volume")
     
     # Footer
