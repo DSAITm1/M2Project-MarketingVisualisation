@@ -141,7 +141,7 @@ def display_dataframe(df: pl.DataFrame, title: str, max_rows: int = 100):
         st.metric("Memory Usage", f"{memory_usage:.1f} MB")
     
     # Display data
-    st.dataframe(pandas_df.head(max_rows), width="stretch")
+    st.dataframe(pandas_df.head(max_rows) if hasattr(pandas_df, 'head') else pandas_df, width="stretch")
     
     if len(pandas_df) > max_rows:
         st.info(f"Showing first {max_rows} rows of {len(pandas_df):,} total rows")

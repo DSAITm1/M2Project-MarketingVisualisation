@@ -128,7 +128,7 @@ def main():
 
         with col3:
             st.metric("🎯 Market Concentration", f"{market_concentration:.1f}%", help="Revenue concentration in top 5 states")
-            top_state = state_df.iloc[0]['customer_state']
+            top_state = state_df['customer_state'][0]
             st.metric("🏆 Top Market", f"{top_state}", help="State with highest revenue")
 
         with col4:

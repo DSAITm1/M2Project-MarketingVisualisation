@@ -34,6 +34,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+def get_segment_count(value_counts_df: pl.DataFrame, segment_name: str) -> int:
+    """Helper function to get count for a specific segment from value_counts result"""
+    filtered = value_counts_df.filter(pl.col('customer_segment') == segment_name)
+    return filtered['count'][0] if not filtered.is_empty() else 0
+
 def initialize_session_state():
     """Initialize session state variables"""
     if 'data_loaded' not in st.session_state:
@@ -182,12 +187,12 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
     
     with kpi_col1:
         if not customer_data.is_empty():
-            total_customers = len(customer_data)
+            total_customers = customer_data.height
             st.metric("👥 Total Customers", f"{total_customers:,}")
     
     with kpi_col2:
         if not order_data.is_empty():
-            total_orders = len(order_data)
+            total_orders = order_data.height
             st.metric("🛒 Total Orders", f"{total_orders:,}")
     
     with kpi_col3:
@@ -208,7 +213,7 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
         if not geo_data.is_empty() and 'total_revenue' in geo_data.columns:
             top_states = geo_data.group_by('customer_state').agg(
                 pl.col('total_revenue').sum()
-            ).sort('total_revenue', descending=True).head(5)
+            ).sort('total_revenue', descending=True).limit(5)
             
             for i, row in enumerate(top_states.iter_rows(named=True)):
                 state = row['customer_state']
@@ -221,12 +226,14 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
             segment_counts = customer_data['customer_segment'].value_counts()
             
             # Identify growth opportunities
-            if 'At Risk' in segment_counts.index:
-                at_risk = segment_counts['At Risk']
+            at_risk_rows = segment_counts.filter(pl.col('customer_segment') == 'At Risk')
+            if not at_risk_rows.is_empty():
+                at_risk = at_risk_rows['count'][0]
                 st.warning(f"⚠️ {at_risk:,} customers at risk of churning")
             
-            if 'New Customers' in segment_counts.index:
-                new_customers = segment_counts['New Customers']
+            new_customer_rows = segment_counts.filter(pl.col('customer_segment') == 'New Customers')
+            if not new_customer_rows.is_empty():
+                new_customers = new_customer_rows['count'][0]
                 st.info(f"🆕 {new_customers:,} new customers to nurture")
 
 def create_customer_intelligence(customer_data):
@@ -247,7 +254,7 @@ def create_customer_intelligence(customer_data):
         
         with col2:
             repeat_customers = (customer_data['total_orders'] > 1).sum()
-            repeat_rate = (repeat_customers / len(customer_data)) * 100
+            repeat_rate = (repeat_customers / customer_data.height) * 100
             st.metric("🔄 Repeat Customer Rate", f"{repeat_rate:.1f}%")
         
         with col3:
@@ -345,33 +352,33 @@ def create_customer_intelligence(customer_data):
             st.write("**🎯 Key Opportunities:**")
             
             # Identify opportunities
-            if 'Champions' in segment_counts.index:
-                champions = segment_counts['Champions']
+            champions = get_segment_count(segment_counts, 'Champions')
+            if champions > 0:
                 st.success(f"✨ **{champions:,} Champions** - Your best customers! Focus on retention programs.")
             
-            if 'Big Spenders' in segment_counts.index:
-                big_spenders = segment_counts['Big Spenders']
+            big_spenders = get_segment_count(segment_counts, 'Big Spenders')
+            if big_spenders > 0:
                 st.info(f"💎 **{big_spenders:,} Big Spenders** - High value, low frequency. Encourage repeat purchases.")
             
-            if 'Potential Loyalists' in segment_counts.index:
-                potential = segment_counts['Potential Loyalists']
+            potential = get_segment_count(segment_counts, 'Potential Loyalists')
+            if potential > 0:
                 st.info(f"🌟 **{potential:,} Potential Loyalists** - Great candidates for loyalty programs.")
         
         with col2:
             st.write("**⚠️ Areas of Concern:**")
             
-            if 'At Risk' in segment_counts.index:
-                at_risk = segment_counts['At Risk']
-                risk_pct = (at_risk / len(customer_data)) * 100
+            at_risk = get_segment_count(segment_counts, 'At Risk')
+            if at_risk > 0:
+                risk_pct = (at_risk / customer_data.height) * 100
                 st.warning(f"🚨 **{at_risk:,} At Risk** ({risk_pct:.1f}%) - Immediate re-engagement needed.")
             
-            if 'One-Time Buyers' in segment_counts.index:
-                one_time = segment_counts['One-Time Buyers']
-                one_time_pct = (one_time / len(customer_data)) * 100
+            one_time = get_segment_count(segment_counts, 'One-Time Buyers')
+            if one_time > 0:
+                one_time_pct = (one_time / customer_data.height) * 100
                 st.warning(f"📉 **{one_time:,} One-Time Buyers** ({one_time_pct:.1f}%) - Focus on conversion to repeat customers.")
             
-            if 'New Customers' in segment_counts.index:
-                new_customers = segment_counts['New Customers']
+            new_customers = get_segment_count(segment_counts, 'New Customers')
+            if new_customers > 0:
                 st.success(f"🆕 **{new_customers:,} New Customers** - Nurture these relationships!")
 
     # RFM Scores Distribution (if available)
@@ -383,7 +390,7 @@ def create_customer_intelligence(customer_data):
         with col1:
             recency_dist = customer_data['recency_score'].value_counts().sort('recency_score')
             fig = create_bar_chart(
-                data=recency_dist.reset_index(),
+                data=recency_dist,
                 x='recency_score',
                 y='count',
                 title="Recency Scores",
@@ -394,7 +401,7 @@ def create_customer_intelligence(customer_data):
         with col2:
             frequency_dist = customer_data['frequency_score'].value_counts().sort('frequency_score')
             fig = create_bar_chart(
-                data=frequency_dist.reset_index(),
+                data=frequency_dist,
                 x='frequency_score',
                 y='count',
                 title="Frequency Scores",
@@ -405,7 +412,7 @@ def create_customer_intelligence(customer_data):
         with col3:
             monetary_dist = customer_data['monetary_score'].value_counts().sort('monetary_score')
             fig = create_bar_chart(
-                data=monetary_dist.reset_index(),
+                data=monetary_dist,
                 x='monetary_score',
                 y='count',
                 title="Monetary Scores",
@@ -416,13 +423,11 @@ def create_customer_intelligence(customer_data):
     # Geographic insights
     st.subheader("🗺️ Geographic Distribution")
     if 'customer_state' in customer_data.columns:
-        state_summary = customer_data.groupby('customer_state').agg({
-            'customer_unique_id': 'count',
-            'total_spent': 'sum',
-            'avg_review_score': 'mean'
-        }).round(2)
-        state_summary.columns = ['Customers', 'Revenue', 'Avg Rating']
-        state_summary = state_summary.sort_values('Revenue', ascending=False)
+        state_summary = customer_data.group_by('customer_state').agg([
+            pl.col('customer_unique_id').count().alias('Customers'),
+            pl.col('total_spent').sum().alias('Revenue'),
+            pl.col('avg_review_score').mean().alias('Avg Rating')
+        ]).sort('Revenue', descending=True)
         
         display_dataframe(state_summary, "📊 State Performance Summary", max_rows=20)
 
@@ -442,8 +447,8 @@ def create_order_intelligence(order_data):
         if 'order_status' in order_data.columns:
             status_counts = order_data['order_status'].value_counts()
             fig = create_pie_chart(
-                values=status_counts.values,
-                names=status_counts.index,
+                values=status_counts['count'].to_list(),
+                names=status_counts['order_status'].to_list(),
                 title="Order Status Distribution"
             )
             display_chart(fig)
@@ -522,7 +527,7 @@ def create_review_intelligence(review_data):
         if 'review_score' in review_data.columns:
             score_dist = review_data['review_score'].value_counts().sort('review_score')
             fig = create_bar_chart(
-                data=score_dist.reset_index(),
+                data=score_dist,
                 x='review_score',
                 y='count',
                 title="Review Score Distribution",
@@ -533,14 +538,13 @@ def create_review_intelligence(review_data):
     with col2:
         st.subheader("📦 Category Performance")
         if 'product_category_name' in review_data.columns:
-            category_performance = review_data.groupby('product_category_name').agg({
-                'review_score': ['mean', 'count']
-            }).round(2)
-            category_performance.columns = ['Avg Rating', 'Review Count']
-            category_performance = category_performance.sort_values('Avg Rating', ascending=False).head(10)
+            category_performance = review_data.group_by('product_category_name').agg([
+                pl.col('review_score').mean().alias('Avg Rating'),
+                pl.col('review_score').count().alias('Review Count')
+            ]).sort('Avg Rating', descending=True).limit(10)
             
             fig = create_bar_chart(
-                data=category_performance.reset_index(),
+                data=category_performance,
                 x='product_category_name',
                 y='Avg Rating',
                 title="Top Categories by Rating",

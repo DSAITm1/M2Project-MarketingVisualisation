@@ -105,7 +105,10 @@ def main():
 
     with col4:
         # Calculate customer concentration (orders per customer)
-        customer_order_freq = df.groupby(df.index // 10)['order_id'].count().mean()  # Rough estimate
+        # Create customer segments for frequency estimation  
+        total_orders = df.height
+        estimated_customers = total_orders // 10 if total_orders > 0 else 1
+        customer_order_freq = total_orders / estimated_customers
         st.metric("🔄 Order Frequency", f"{customer_order_freq:.1f}", help="Average orders per customer segment")
         st.metric("📈 Revenue Growth", "↑ 12.3%", help="Month-over-month revenue growth")
 
@@ -140,14 +143,20 @@ def main():
 
         # Order timing analysis
         if 'order_purchase_timestamp' in df.columns:
-            df['hour'] = df['order_purchase_timestamp'].dt.hour
-            peak_hour = df['hour'].mode().iloc[0]
+            df = df.with_columns(
+                pl.col('order_purchase_timestamp').dt.hour().alias('hour')
+            )
+            peak_hour = df['hour'].mode().to_pandas().iloc[0]
             st.info(f"🏆 **Peak ordering hour: {peak_hour}:00** - Optimize marketing campaigns for this time")
 
         # State performance
         if 'customer_state' in df.columns:
-            top_state = df.groupby('customer_state')['order_value'].sum().idxmax()
-            top_state_revenue = df.groupby('customer_state')['order_value'].sum().max()
+            state_revenue = df.group_by('customer_state').agg(
+                pl.col('order_value').sum().alias('total_revenue')
+            ).sort('total_revenue', descending=True)
+            
+            top_state = state_revenue['customer_state'][0]
+            top_state_revenue = state_revenue['total_revenue'][0]
             st.success(f"📍 **{top_state} leads with ${top_state_revenue:,.0f} in revenue**")
 
         # Review score correlation

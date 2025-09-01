@@ -297,7 +297,7 @@ def get_top_n_analysis(df: pl.DataFrame, group_by: str, value_col: str,
     
     result = df.group_by(group_by).agg(
         agg_funcs[agg_func].alias(value_col)
-    ).sort(value_col, descending=True).head(n)
+    ).sort(value_col, descending=True).limit(n)
     
     return result
 
