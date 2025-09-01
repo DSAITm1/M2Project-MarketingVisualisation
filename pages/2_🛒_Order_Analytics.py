@@ -63,7 +63,7 @@ def main():
     with st.spinner("Loading order analytics data..."):
         df = load_order_analytics()
 
-    if df.empty:
+    if df.is_empty():
         st.error("No order data available.")
         return
 
@@ -291,7 +291,7 @@ def main():
                 (state_performance['Avg_Review'] > 3.5)
             ]
 
-            if not growth_states.empty:
+            if not growth_states.is_empty():
                 st.success(f"🚀 **{len(growth_states)} states** have growth potential (below avg revenue, high satisfaction)")
 
     # Actionable Recommendations

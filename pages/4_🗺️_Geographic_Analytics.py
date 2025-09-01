@@ -384,7 +384,7 @@ def main():
                 (pl.col('total_revenue') > quantile_20_revenue)
             ).sort('total_revenue', descending=True).limit(5)
             
-            if not expansion_targets.empty:
+            if not expansion_targets.is_empty():
                 st.warning("**Top 5 Strategic Expansion Markets:**")
                 for row in expansion_targets.iter_rows(named=True):
                     st.write(f"🚀 **{row['customer_state']}**: {row['customer_count']:,} customers, "
@@ -404,7 +404,7 @@ def main():
     # Strategic Recommendations
     st.header("🎯 Strategic Recommendations")
     
-    if not state_df.empty:
+    if not state_df.is_empty():
         rec_col1, rec_col2 = st.columns(2)
         
         with rec_col1:

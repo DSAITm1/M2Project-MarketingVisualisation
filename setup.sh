@@ -23,7 +23,7 @@ echo "⬆️  Upgrading pip..."
 pip install --upgrade pip
 
 # Install dependencies
-echo "📚 Installing dependencies (including Polars)..."
+echo "📚 Installing dependencies (including Polars and BigQuery Storage)..."
 pip install -r requirements.txt
 
 # Verify installation

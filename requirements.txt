@@ -13,6 +13,7 @@ numpy>=1.24.0,<2.0.0
 
 # Google Cloud & BigQuery Integration
 google-cloud-bigquery>=3.13.0,<4.0.0
+google-cloud-bigquery-storage>=2.22.0,<3.0.0  # Faster data access for large queries
 google-auth>=2.0.0,<3.0.0
 db-dtypes>=1.0.0,<2.0.0
 

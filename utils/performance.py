@@ -90,7 +90,7 @@ class PerformanceTracker:
             st.sidebar.header("⚡ Performance Monitor")
             
             summary_df = self.get_performance_summary()
-            if not summary_df.empty:
+            if not summary_df.is_empty():
                 st.sidebar.dataframe(summary_df, width="stretch")
             else:
                 st.sidebar.info("No performance data yet")

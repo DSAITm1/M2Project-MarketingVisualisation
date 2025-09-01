@@ -137,10 +137,10 @@ def create_dashboard():
     
     # Check data availability
     data_status = {
-        'Customers': not customer_data.empty,
-        'Orders': not order_data.empty, 
-        'Reviews': not review_data.empty,
-        'Geography': not geo_data.empty
+        'Customers': not customer_data.is_empty(),
+        'Orders': not order_data.is_empty(), 
+        'Reviews': not review_data.is_empty(),
+        'Geography': not geo_data.is_empty()
     }
     
     # Show data status
@@ -181,22 +181,22 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
     
     with kpi_col1:
-        if not customer_data.empty:
+        if not customer_data.is_empty():
             total_customers = len(customer_data)
             st.metric("👥 Total Customers", f"{total_customers:,}")
     
     with kpi_col2:
-        if not order_data.empty:
+        if not order_data.is_empty():
             total_orders = len(order_data)
             st.metric("🛒 Total Orders", f"{total_orders:,}")
     
     with kpi_col3:
-        if not customer_data.empty and 'total_spent' in customer_data.columns:
+        if not customer_data.is_empty() and 'total_spent' in customer_data.columns:
             total_revenue = customer_data['total_spent'].sum()
             st.metric("💰 Total Revenue", format_currency(total_revenue))
     
     with kpi_col4:
-        if not review_data.empty and 'review_score' in review_data.columns:
+        if not review_data.is_empty() and 'review_score' in review_data.columns:
             avg_rating = review_data['review_score'].mean()
             st.metric("⭐ Avg Rating", f"{avg_rating:.2f}/5")
     
@@ -205,7 +205,7 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
     
     with col1:
         st.subheader("🎯 Top Performing States")
-        if not geo_data.empty and 'total_revenue' in geo_data.columns:
+        if not geo_data.is_empty() and 'total_revenue' in geo_data.columns:
             top_states = geo_data.groupby('customer_state')['total_revenue'].sum().sort_values(ascending=False).head(5)
             
             for i, (state, revenue) in enumerate(top_states.items()):
@@ -213,7 +213,7 @@ def create_executive_summary(customer_data, order_data, review_data, geo_data):
     
     with col2:
         st.subheader("📈 Growth Opportunities")
-        if not customer_data.empty and 'customer_segment' in customer_data.columns:
+        if not customer_data.is_empty() and 'customer_segment' in customer_data.columns:
             segment_counts = customer_data['customer_segment'].value_counts()
             
             # Identify growth opportunities
@@ -229,7 +229,7 @@ def create_customer_intelligence(customer_data):
     """Advanced customer analytics with RFM analysis"""
     st.header("👥 Customer Intelligence")
     
-    if customer_data.empty:
+    if customer_data.is_empty():
         st.warning("⚠️ No customer data available")
         return
     
@@ -426,7 +426,7 @@ def create_order_intelligence(order_data):
     """Advanced order analytics"""
     st.header("🛒 Order Intelligence")
     
-    if order_data.empty:
+    if order_data.is_empty():
         st.warning("⚠️ No order data available")
         return
     
@@ -475,7 +475,7 @@ def create_order_intelligence(order_data):
         st.subheader("⏱️ Delivery Performance Analysis")
         
         delivered_orders = order_data[order_data['order_status'] == 'delivered'].copy()
-        if not delivered_orders.empty:
+        if not delivered_orders.is_empty():
             col1, col2 = st.columns(2)
             
             with col1:
@@ -506,7 +506,7 @@ def create_review_intelligence(review_data):
     """Advanced review analytics"""
     st.header("⭐ Review Intelligence")
     
-    if review_data.empty:
+    if review_data.is_empty():
         st.warning("⚠️ No review data available")
         return
     
