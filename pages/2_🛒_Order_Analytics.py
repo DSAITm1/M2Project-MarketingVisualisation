@@ -4,8 +4,7 @@ Detailed order trends and patterns analysis
 """
 
 import streamlit as st
-import pandas as pd
-from pandas import DatetimeTZDtype
+import polars as pl
 import plotly.express as px
 import plotly.graph_objects as go
 import sys
@@ -27,7 +26,7 @@ def load_order_analytics():
     """Load comprehensive order analytics from BigQuery"""
     config = load_config()
     if not config:
-        return pd.DataFrame()
+        return pl.DataFrame()
     
     query = f"""
     WITH order_analytics AS (
@@ -68,21 +67,21 @@ def main():
         st.error("No order data available.")
         return
 
-    # Convert date columns and normalize timezones
+    # Convert date columns to proper datetime format
     date_columns = ['order_purchase_timestamp', 'order_approved_at',
                    'order_delivered_customer_date', 'order_estimated_delivery_date']
 
     for col in date_columns:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
-            if isinstance(df[col].dtype, DatetimeTZDtype):
-                df[col] = df[col].dt.tz_convert('UTC').dt.tz_localize(None)
+            df = df.with_columns(
+                pl.col(col).str.to_datetime(format=None, strict=False).alias(col)
+            )
 
     # Executive Summary for Marketing Director
     st.header("📊 Executive Summary")
 
     # Calculate key business metrics
-    total_orders = len(df)
+    total_orders = df.height
     total_revenue = df['order_value'].sum()
     avg_order_value = df['order_value'].mean()
     completion_rate = (df['order_status'] == 'delivered').mean() * 100
@@ -199,11 +198,16 @@ def main():
     # Customer Segmentation by Order Value
     st.header("🎯 Customer Segmentation Analysis")
 
-    # Create order value segments
-    df['value_segment'] = pd.cut(
-        df['order_value'],
-        bins=[0, 50, 150, 500, float('inf')],
-        labels=['Budget (<$50)', 'Standard ($50-150)', 'Premium ($150-500)', 'VIP (>$500)']
+    # Create order value segments using Polars
+    df = df.with_columns(
+        pl.when(pl.col('order_value') < 50)
+        .then(pl.lit('Budget (<$50)'))
+        .when(pl.col('order_value') < 150)
+        .then(pl.lit('Standard ($50-150)'))
+        .when(pl.col('order_value') < 500)
+        .then(pl.lit('Premium ($150-500)'))
+        .otherwise(pl.lit('VIP (>$500)'))
+        .alias('value_segment')
     )
 
     col1, col2 = st.columns(2)

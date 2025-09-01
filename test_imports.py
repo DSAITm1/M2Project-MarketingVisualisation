@@ -20,8 +20,8 @@ try:
     from utils.data_processing import get_customer_segments
     print("✅ Utils data_processing imports successful")
 
-    # Test page imports (without streamlit)
-    import pandas as pd
+    # Test core imports (updated for Polars)
+    import polars as pl
     import plotly.express as px
 
     print("✅ All core imports successful!")
