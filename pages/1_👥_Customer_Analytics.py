@@ -30,7 +30,6 @@ def get_customer_analytics_data():
         # Customer segmentation data
         customer_query = """
         SELECT 
-            customer_sk,
             customer_id,
             customer_state,
             customer_city,

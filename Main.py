@@ -32,16 +32,21 @@ def get_dashboard_overview():
         return None
     
     try:
-        # Customer Overview
+                # Customer Overview
         customer_query = """
         SELECT 
-            CAST(COUNT(DISTINCT customer_sk) AS INT64) as total_customers,
-            CAST(COUNT(DISTINCT customer_state) AS INT64) as total_states,
-            ROUND(SUM(total_spent), 2) as total_revenue,
-            ROUND(AVG(avg_order_value), 2) as avg_order_value,
-            ROUND(AVG(avg_review_score), 2) as avg_rating
+            customer_id,
+            customer_state,
+            customer_city,
+            CAST(total_orders AS INT64) as total_orders,
+            ROUND(total_spent, 2) as total_spent,
+            ROUND(avg_order_value, 2) as avg_order_value,
+            ROUND(avg_review_score, 2) as avg_review_score,
+            ROUND(clv_score, 2) as clv_score,
+            segment
         FROM `project-olist-470307.dbt_olist_analytics.customer_analytics_obt`
         WHERE total_orders > 0
+        ORDER BY total_spent DESC
         """
         
         customer_result = client.query(customer_query).result()

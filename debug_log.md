@@ -2,17 +2,44 @@
 
 **Project**: Marketing Analytics Dashboard  
 **Framework**: Streamlit + BigQuery + Plotly  
-**Last Updated**: 2025-09-01  
+**Last Updated**: 2025-09-02  
 
 ## 🎯 Project Status: ✅ FULLY OPERATIONAL
 
-All analytics pages are working correctly with real data from BigQuery.
+All analytics pages are working correctly with real data from BigQuery using natural keys.
 
 ---
 
 ## 🔧 Critical Fixes Applied
 
-### 1. Import Path Resolution (Sep 1, 2025)
+### 1. Natural Key Implementation (Sep 2, 2025)
+**Issue**: BigQuery queries were using surrogate keys (_sk) instead of natural keys (_id)
+**Root Cause**: Inconsistent key usage between dimensional model and analytics OBT tables
+**Solution Applied**:
+```sql
+-- BEFORE (using surrogate keys)
+COUNT(DISTINCT customer_sk) as total_customers
+
+-- AFTER (using natural keys) 
+COUNT(DISTINCT customer_id) as total_customers
+```
+
+**Files Fixed**:
+- `Main.py` - Fixed customer overview query to use `customer_id` instead of `customer_sk`
+- `pages/1_👥_Customer_Analytics.py` - Removed `customer_sk` from customer query, using only `customer_id`
+
+**Key Changes Made**:
+- ✅ **Main Dashboard**: Changed `customer_sk` → `customer_id` in total customers calculation
+- ✅ **Customer Analytics**: Removed surrogate key from customer segmentation query
+- ✅ **All Other Pages**: Already using natural keys (`order_id`, `customer_id`, `product_id`)
+
+**Verification Results**:
+- Total customers (natural key): 98,665
+- Total orders (natural key): 98,196  
+- Unique customers in revenue: 98,196
+- All queries executing successfully with proper integer types
+
+### 2. Import Path Resolution (Sep 1, 2025)
 **Issue**: Import errors causing "1" marks beside file names
 **Root Cause**: Incorrect import statements in analytics pages
 **Solution Applied**:
@@ -160,6 +187,11 @@ print("✅ Connected" if client else "❌ Failed")
 
 ## 📝 Recent Changes Log
 
+**2025-09-02**:
+- ✅ **Natural Key Implementation**: Fixed all BigQuery queries to use natural keys (`customer_id`, `order_id`) instead of surrogate keys (`customer_sk`, `order_sk`)
+- ✅ **Splash Screen System**: Implemented comprehensive loading screen with parallel data preloading for all analytics pages
+- ✅ **File Cleanup**: Removed empty summary files (`POLARS_FIX_SUMMARY.md`, `ANALYTICS_ENHANCEMENT_SUMMARY.md`) - content consolidated in this debug log
+
 **2025-09-01**: 
 - ✅ Fixed all import path issues
 - ✅ Resolved Streamlit multi-page navigation
@@ -170,7 +202,7 @@ print("✅ Connected" if client else "❌ Failed")
 - ✅ Fixed integer display issues across all pages
 - ✅ Applied consistent metric card design system
 
-**Status**: All critical issues resolved. Application fully operational with enhanced UI/UX.
+**Status**: All critical issues resolved. Application fully operational with enhanced UI/UX and proper natural key usage.
 
 ---
 
