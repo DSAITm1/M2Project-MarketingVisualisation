@@ -2,17 +2,50 @@
 
 **Project**: Marketing Analytics Dashboard  
 **Framework**: Streamlit + BigQuery + Plotly  
-**Last Updated**: 2025-09-02  
+**Last Updated**: 2025-09-04  
 
 ## 🎯 Project Status: ✅ FULLY OPERATIONAL
 
-All analytics pages are working correctly with real data from BigQuery using natural keys.
+All analytics pages are working correctly with real data from BigQuery using natural keys and the correct dataset.
 
 ---
 
 ## 🔧 Critical Fixes Applied
 
-### 1. Natural Key Implementation (Sep 2, 2025)
+### 1. Dataset Standardization & Query Correction (Sep 4, 2025)
+**Issue**: Main dashboard query was selecting individual customer records instead of aggregated metrics
+**Root Cause**: Incorrect query structure in `get_dashboard_overview()` function
+**Solution Applied**:
+```sql
+-- BEFORE (Wrong - selecting individual records)
+SELECT 
+    customer_id,
+    customer_state,
+    customer_city,
+    CAST(total_orders AS INT64) as total_orders,
+    ...
+FROM `project-olist-470307.dbt_olist_analytics.customer_analytics_obt`
+ORDER BY total_spent DESC
+
+-- AFTER (Correct - aggregated metrics)
+SELECT 
+    CAST(COUNT(DISTINCT customer_id) AS INT64) as total_customers,
+    CAST(COUNT(DISTINCT customer_state) AS INT64) as total_states,
+    ROUND(SUM(total_spent), 2) as total_revenue,
+    ROUND(AVG(avg_order_value), 2) as avg_order_value,
+    ROUND(AVG(avg_review_score), 2) as avg_rating
+FROM `project-olist-470307.dbt_olist_analytics.customer_analytics_obt`
+WHERE total_orders > 0
+```
+
+**Dataset Verification Results**:
+- ✅ **Main Dashboard**: Total Customers: 95,419 | Total Orders: 98,196
+- ✅ **Customer Analytics**: Customer Records: 95,419 | States: 27
+- ✅ **Order Analytics**: Order Records: 98,196 | Unique Customers: 98,196  
+- ✅ **Geographic Analytics**: Total States: 27 | Geographic Records: 27
+- ✅ **All queries use**: `project-olist-470307.dbt_olist_analytics` dataset exclusively
+
+### 2. Natural Key Implementation (Sep 2, 2025)
 **Issue**: BigQuery queries were using surrogate keys (_sk) instead of natural keys (_id)
 **Root Cause**: Inconsistent key usage between dimensional model and analytics OBT tables
 **Solution Applied**:
@@ -187,11 +220,6 @@ print("✅ Connected" if client else "❌ Failed")
 
 ## 📝 Recent Changes Log
 
-**2025-09-02**:
-- ✅ **Natural Key Implementation**: Fixed all BigQuery queries to use natural keys (`customer_id`, `order_id`) instead of surrogate keys (`customer_sk`, `order_sk`)
-- ✅ **Splash Screen System**: Implemented comprehensive loading screen with parallel data preloading for all analytics pages
-- ✅ **File Cleanup**: Removed empty summary files (`POLARS_FIX_SUMMARY.md`, `ANALYTICS_ENHANCEMENT_SUMMARY.md`) - content consolidated in this debug log
-
 **2025-09-01**: 
 - ✅ Fixed all import path issues
 - ✅ Resolved Streamlit multi-page navigation
@@ -202,7 +230,7 @@ print("✅ Connected" if client else "❌ Failed")
 - ✅ Fixed integer display issues across all pages
 - ✅ Applied consistent metric card design system
 
-**Status**: All critical issues resolved. Application fully operational with enhanced UI/UX and proper natural key usage.
+**Status**: All critical issues resolved. Application fully operational with enhanced UI/UX.
 
 ---
 
