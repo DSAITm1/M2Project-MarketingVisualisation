@@ -1,0 +1,293 @@
+{
+  "overview": {
+    "total_customers": 95419,
+    "total_states": 27,
+    "total_cities": 4109,
+    "total_revenue": 13591508.73,
+    "avg_customer_value": 142.44,
+    "avg_order_value": 138.23,
+    "avg_customer_rating": 4.06,
+    "avg_clv": 108971,
+    "report_generated": "September 8, 2025",
+    "data_source": "project-olist-470307.dbt_olist_analytics"
+  },
+  "segments": [
+    {
+      "customer_segment": "champion",
+      "customer_count": 12,
+      "percentage_of_base": 0.01,
+      "avg_spent": 826.0,
+      "avg_order_value": 132.72,
+      "avg_clv": 3131,
+      "avg_rating": 4.33,
+      "definition": "Highest value & most recently active multi‑purchase customers; brand advocates",
+      "criteria": "High recency; high frequency (≥4); monetary > $500",
+      "primary_objective": "Retain & leverage advocacy",
+      "recommended_action": "VIP perks, early access, referral incentives"
+    },
+    {
+      "customer_segment": "loyal_customer",
+      "customer_count": 113,
+      "percentage_of_base": 0.12,
+      "avg_spent": 630.23,
+      "avg_order_value": 194.44,
+      "avg_clv": 30953,
+      "avg_rating": 3.97,
+      "definition": "Consistent repeat purchasers with strong spend",
+      "criteria": "Good recency; high frequency (≥3); monetary > $400",
+      "primary_objective": "Deepen loyalty & referrals",
+      "recommended_action": "Tiered rewards, exclusive bundles"
+    },
+    {
+      "customer_segment": "potential_loyalist",
+      "customer_count": 1651,
+      "percentage_of_base": 1.73,
+      "avg_spent": 347.85,
+      "avg_order_value": 172.31,
+      "avg_clv": 69747,
+      "avg_rating": 3.8,
+      "definition": "Emerging repeat buyers showing upward value trend",
+      "criteria": "Recent purchase; medium frequency (2–3); rising spend",
+      "primary_objective": "Accelerate to loyal",
+      "recommended_action": "Personalized cross-sell, timed re‑engagement"
+    },
+    {
+      "customer_segment": "new_customer_high_value",
+      "customer_count": 38580,
+      "percentage_of_base": 40.42,
+      "avg_spent": 258.1,
+      "avg_order_value": 258.1,
+      "avg_clv": 204967,
+      "avg_rating": 4.01,
+      "definition": "Recent first/second purchase with high initial basket",
+      "criteria": "High recency; frequency 1–2; first order > $200",
+      "primary_objective": "Secure 2nd / 3rd purchase",
+      "recommended_action": "Onboarding sequence, 2nd purchase incentive"
+    },
+    {
+      "customer_segment": "hibernating",
+      "customer_count": 1137,
+      "percentage_of_base": 1.19,
+      "avg_spent": 94.86,
+      "avg_order_value": 46.7,
+      "avg_clv": 22166,
+      "avg_rating": 3.84,
+      "definition": "Previously active, now lapsed beyond recency threshold",
+      "criteria": "Low recency; historical frequency ≥2; declining engagement",
+      "primary_objective": "Reactivate or churn confirm",
+      "recommended_action": "Win‑back offer, reminder of value, feedback survey"
+    },
+    {
+      "customer_segment": "new_customer_low_value",
+      "customer_count": 53926,
+      "percentage_of_base": 56.52,
+      "avg_spent": 53.24,
+      "avg_order_value": 53.24,
+      "avg_clv": 43511,
+      "avg_rating": 4.11,
+      "definition": "Recent single low-spend purchase; low commitment",
+      "criteria": "High recency; frequency 1; order < $100",
+      "primary_objective": "Nurture & increase AOV",
+      "recommended_action": "Educational content, bundles, progressive offers"
+    }
+  ],
+  "geographic_top_8_states": [
+    {
+      "customer_state": "SP",
+      "state_name": "São Paulo",
+      "total_unique_customers": 39963,
+      "total_orders": 41357,
+      "total_revenue": 5201471.06,
+      "avg_customer_value": 130.16,
+      "avg_order_value": 126.06,
+      "market_share_percentage": 41.9,
+      "avg_rating": 4.16,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "RJ",
+      "state_name": "Rio de Janeiro",
+      "total_unique_customers": 12300,
+      "total_orders": 12763,
+      "total_revenue": 1823988.87,
+      "avg_customer_value": 148.29,
+      "avg_order_value": 143.26,
+      "market_share_percentage": 12.9,
+      "avg_rating": 3.83,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "MG",
+      "state_name": "Minas Gerais",
+      "total_unique_customers": 11176,
+      "total_orders": 11549,
+      "total_revenue": 1585699.37,
+      "avg_customer_value": 141.88,
+      "avg_order_value": 137.82,
+      "market_share_percentage": 11.7,
+      "avg_rating": 4.12,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "RS",
+      "state_name": "Rio Grande do Sul",
+      "total_unique_customers": 5248,
+      "total_orders": 5432,
+      "total_revenue": 750332.02,
+      "avg_customer_value": 142.97,
+      "avg_order_value": 138.29,
+      "market_share_percentage": 5.5,
+      "avg_rating": 4.12,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "PR",
+      "state_name": "Paraná",
+      "total_unique_customers": 4840,
+      "total_orders": 5002,
+      "total_revenue": 683547.46,
+      "avg_customer_value": 141.23,
+      "avg_order_value": 137.32,
+      "market_share_percentage": 5.1,
+      "avg_rating": 4.17,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "SC",
+      "state_name": "Santa Catarina",
+      "total_unique_customers": 3509,
+      "total_orders": 3611,
+      "total_revenue": 520278.44,
+      "avg_customer_value": 148.27,
+      "avg_order_value": 143.78,
+      "market_share_percentage": 3.7,
+      "avg_rating": 4.05,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "BA",
+      "state_name": "Bahia",
+      "total_unique_customers": 3257,
+      "total_orders": 3360,
+      "total_revenue": 511613.4,
+      "avg_customer_value": 157.08,
+      "avg_order_value": 152.85,
+      "market_share_percentage": 3.4,
+      "avg_rating": 3.82,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    },
+    {
+      "customer_state": "DF",
+      "state_name": "Distrito Federal",
+      "total_unique_customers": 2062,
+      "total_orders": 2129,
+      "total_revenue": 302876.33,
+      "avg_customer_value": 146.88,
+      "avg_order_value": 143.63,
+      "market_share_percentage": 2.2,
+      "avg_rating": 4.06,
+      "top_categories": "bed_bath_table, health_beauty, sports_leisure"
+    }
+  ],
+  "purchase_behavior": [
+    {
+      "purchase_behavior": "Frequent Buyers",
+      "customer_count": 5,
+      "percentage_of_base": 0.01,
+      "avg_spent": 802.1,
+      "avg_rating": 4.44,
+      "retention_risk": "Low"
+    },
+    {
+      "purchase_behavior": "Regular Buyers",
+      "customer_count": 43,
+      "percentage_of_base": 0.05,
+      "avg_spent": 636.81,
+      "avg_rating": 4.19,
+      "retention_risk": "Medium"
+    },
+    {
+      "purchase_behavior": "Occasional Buyers",
+      "customer_count": 2865,
+      "percentage_of_base": 3.00,
+      "avg_spent": 255.46,
+      "avg_rating": 3.82,
+      "retention_risk": "High"
+    },
+    {
+      "purchase_behavior": "One-time Buyers",
+      "customer_count": 92506,
+      "percentage_of_base": 96.95,
+      "avg_spent": 138.67,
+      "avg_rating": 4.07,
+      "retention_risk": "Very High"
+    }
+  ],
+  "revenue_opportunities": {
+    "customer_retention_strategy": {
+      "impact": "Convert 10% of one-time buyers to occasional buyers",
+      "potential_customers": 9251,
+      "additional_spend_per_customer": 116.79,
+      "total_revenue_increase": 1080000,
+      "actions": ["Welcome series", "Product recommendations", "Loyalty program"]
+    },
+    "geographic_expansion": {
+      "impact": "Increase market penetration in underperforming states",
+      "focus": "States with <1,000 customers",
+      "actions": ["Regional marketing campaigns", "Local partnerships"]
+    },
+    "segment_elevation": {
+      "low_to_high_value": {
+        "conversion_rate": "5%",
+        "revenue_potential": 1110000
+      },
+      "potential_to_loyal": {
+        "conversion_rate": "25%",
+        "revenue_potential": 482000
+      }
+    },
+    "aov_optimization": {
+      "impact": "5% AOV increase across customer base",
+      "revenue_potential": 679000,
+      "focus": ["Cross-selling", "Bundle offers", "Minimum order incentives"]
+    }
+  },
+  "marketing_recommendations": {
+    "immediate_actions": {
+      "timeframe": "Next 30 Days",
+      "retention_campaign": ["3-email welcome series", "15% second purchase discount", "Product recommendations"],
+      "segment_campaigns": {
+        "champions_loyal": "VIP program launch",
+        "potential_loyalists": "Personalization increase",
+        "new_customers": "Educational content series",
+        "hibernating": "25% win-back offer"
+      }
+    },
+    "medium_term": {
+      "timeframe": "Next 90 Days",
+      "programs": ["Points-based loyalty system", "Referral program", "Geographic expansion marketing"],
+      "analytics": ["Customer journey mapping", "Cohort analysis", "Predictive modeling"]
+    },
+    "long_term": {
+      "timeframe": "Next 12 Months",
+      "initiatives": ["AI-driven personalization", "Customer success program", "Community building"]
+    }
+  },
+  "success_metrics": {
+    "primary": {
+      "customer_retention_rate": {
+        "current": 3,
+        "target": 25
+      },
+      "avg_clv_increase": 30,
+      "repeat_purchase_rate_target": 15,
+      "customer_satisfaction_maintain": 4.0
+    },
+    "secondary": {
+      "geographic_diversification": "Reduce concentration risk",
+      "segment_migration": "Move customers up value tiers",
+      "revenue_per_customer_increase": 20,
+      "onboarding_effectiveness": "Improve new customer conversion"
+    }
+  }
+}
