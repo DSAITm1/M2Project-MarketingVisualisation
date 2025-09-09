@@ -138,7 +138,7 @@ def load_customer_data():
         # Load additional data from JSON if available
         overview_data = None
         try:
-            with open('/Users/jefflee/SCTP/M2Project/M2Project-MarketingVisualisation/customer_report_data.json', 'r') as f:
+            with open('/Users/jefflee/SCTP/M2Project/M2Project-MarketingVisualisation/customer_analytics_snapshot.json', 'r') as f:
                 data = json.load(f)
                 overview_data = data.get('overview', {})
         except:
